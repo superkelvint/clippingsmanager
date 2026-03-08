@@ -25,7 +25,7 @@ The app also generates a table of contents from your structure, so long note set
 ## Demo
 
 <p align="center">
-  <a href="clippings-demo.mp4">
+  <a href="https://downloads.supermind.org/clippings-demo.mp4">
     Watch the walkthrough video!
   </a>
 </p>
