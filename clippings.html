@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="en" style="scroll-behavior: auto !important;"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clippings Manager</title>
+    <style>
+        :root {
+            --bg: #daa520;
+            --text: #333333;
+            --muted: #666666;
+            --border: #e0e0e0;
+            --accent: #6b7280;
+            --hover: #fef3c7;
+            --panel: rgba(255, 248, 220, 0.35);
+            --card: #fde68a;
+        }
+        
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            color: var(--text);
+            background: var(--bg);
+            line-height: 1.6;
+        }
+
+        /* UI Controls */
+        #controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: -0.5rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        button:hover { background: #4b5563; }
+        
+        /* Floating edit button */
+        #enable-edit-btn {
+            position: fixed;
+            right: 24px;
+            top: 34px;
+            z-index: 1100;
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
+        }
+
+        #help-btn {
+            position: fixed;
+            left: 24px;
+            top: 34px;
+            z-index: 1100;
+            background: #374151;
+            box-shadow: 0 8px 20px rgba(55, 65, 81, 0.2);
+        }
+        #help-btn:hover { background: #1f2937; }
+
+        #reset-btn {
+            position: fixed;
+            left: 24px;
+            top: 84px;
+            z-index: 1100;
+            display: none;
+            background: #991b1b;
+            box-shadow: 0 8px 20px rgba(153, 27, 27, 0.2);
+        }
+        #reset-btn:hover { background: #7f1d1d; }
+        body.is-editing #reset-btn { display: inline-block; }
+
+        body.is-editing #enable-edit-btn {
+            background: #dc2626;
+        }
+
+        body.is-editing #enable-edit-btn:hover {
+            background: #b91c1c;
+        }
+
+        .add-btn {
+            background: #f1f5f9;
+            color: #475569;
+            margin-top: 0.5rem;
+            display: none;
+        }
+        
+        .add-btn:hover { background: #e2e8f0; }
+
+        /* Table of Contents */
+        #toc-container {
+            background: var(--card);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 3rem;
+        }
+        .toc-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }
+        #toc-level-btn {
+            background: #9ca3af;
+            color: #111827;
+            padding: 0.35rem 0.6rem;
+            font-size: 0.8rem;
+            border-radius: 999px;
+        }
+        #toc-level-btn:hover { background: #6b7280; color: #ffffff; }
+        
+        #toc-container ul { list-style-type: none; padding-left: 1.5rem; }
+        #toc-container > ul { padding-left: 0; }
+        #toc-container a { color: #2563eb; text-decoration: underline; }
+        #toc-container a:hover { color: #1d4ed8; text-decoration: underline; }
+
+        /* Content Structure */
+        .section { margin-bottom: 3rem; }
+        .subsection-group {
+            margin-left: 0;
+            margin-top: 1.25rem;
+            padding: 0.25rem 1rem 0.75rem;
+            border: 1px solid rgba(120, 53, 15, 0.35);
+            border-radius: 10px;
+            background: var(--card);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+        }
+        .entry { 
+            background: var(--hover);
+            padding: 1rem 1.5rem; 
+            border-radius: 8px; 
+            margin-top: 1rem;
+            border: 1px solid rgba(120, 53, 15, 0.3);
+        }
+
+        /* Typography */
+        h2 { font-size: 1.8rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+        h3 { font-size: 1.4rem; margin-bottom: 0.5rem; color: #444; }
+        h4 { font-size: 1.1rem; margin: 0 0 0.5rem 0; color: #111; }
+        
+        .source { font-size: 0.85rem; color: var(--muted); font-weight: 600; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .text { white-space: pre-wrap; }
+
+        /* Editing Mode Styles */
+        body:not(.is-editing) [contenteditable="true"] { pointer-events: none; outline: none; }
+        body:not(.is-editing) .drag-handle { display: none; }
+        
+        .is-editing [contenteditable="true"]:empty:before {
+            content: attr(data-placeholder);
+            color: #aaa;
+            font-style: italic;
+        }
+        
+        .is-editing [contenteditable="true"]:focus {
+            outline: 2px solid var(--accent);
+            border-radius: 2px;
+            padding: 2px;
+        }
+
+        .is-editing .add-btn { display: inline-block; }
+        .item-toolbar {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+        }
+        .item-toolbar .section-title,
+        .item-toolbar .subsection-title,
+        .item-toolbar .entry-title {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .delete-btn {
+            display: none;
+            flex: 0 0 auto;
+            background: #b91c1c;
+            color: #fff;
+            padding: 0.25rem 0.6rem;
+            font-size: 0.78rem;
+            line-height: 1.2;
+            border-radius: 999px;
+        }
+        .delete-btn:hover { background: #991b1b; }
+        .is-editing .delete-btn { display: inline-block; }
+
+        /* Drag and Drop */
+        .drag-handle {
+            cursor: grab;
+            color: #cbd5e1;
+            margin-right: 8px;
+            font-family: monospace;
+            font-size: 1.2rem;
+            user-select: none;
+            display: inline-block;
+        }
+        
+        .drag-handle:active { cursor: grabbing; }
+        
+        .draggable { position: relative; }
+        .draggable.dragging { opacity: 0.4; }
+        .draggable.drag-over-top { border-top: 2px solid var(--accent); }
+        .draggable.drag-over-bottom { border-bottom: 2px solid var(--accent); }
+
+        /* Toast Notification */
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            font-weight: 500;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        #toast.show { opacity: 1; }
+        #version-badge {
+            position: fixed;
+            left: 16px;
+            bottom: 12px;
+            font-size: 0.72rem;
+            color: rgba(51, 51, 51, 0.7);
+            letter-spacing: 0.02em;
+            z-index: 900;
+            user-select: none;
+        }
+
+        #help-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(17, 24, 39, 0.55);
+            z-index: 1200;
+            display: grid;
+            place-items: center;
+            padding: 1rem;
+        }
+        #help-modal[hidden] { display: none; }
+        .help-card {
+            width: min(760px, 96vw);
+            max-height: 88vh;
+            overflow: auto;
+            background: #fffdf2;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            padding: 1.25rem 1.25rem 1rem;
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.2);
+        }
+        .help-card h2 {
+            margin: 0 0 0.5rem;
+            border: none;
+            padding: 0;
+            font-size: 1.4rem;
+        }
+        .help-card h3 {
+            font-size: 1rem;
+            margin: 1rem 0 0.35rem;
+            color: #1f2937;
+        }
+        .help-card p, .help-card li {
+            color: #374151;
+            font-size: 0.95rem;
+        }
+        .help-card ul {
+            margin: 0.35rem 0 0.6rem;
+            padding-left: 1.2rem;
+        }
+        .help-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 1rem;
+        }
+
+        #reset-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(17, 24, 39, 0.65);
+            z-index: 1250;
+            display: grid;
+            place-items: center;
+            padding: 1rem;
+        }
+        #reset-modal[hidden] { display: none; }
+        .confirm-card {
+            width: min(620px, 96vw);
+            background: #fffdf2;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            padding: 1.1rem;
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.25);
+        }
+        .confirm-card h3 {
+            margin-top: 0;
+            color: #7f1d1d;
+        }
+        .confirm-card input {
+            width: 100%;
+            margin-top: 0.5rem;
+            margin-bottom: 0.6rem;
+            padding: 0.55rem 0.65rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+        .confirm-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        #confirm-reset-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+<style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style></head>
+<body class="" style="scroll-behavior: auto !important;">
+    <button id="help-btn" type="button">Help</button>
+    <button id="reset-btn" type="button">Reset Document</button>
+
+    <div id="controls">
+        <div>
+            <h1 id="main-title" contenteditable="false" data-placeholder="Document Title..." style="margin:0; font-size: 1.5rem;">Clippings Manager</h1>
+            <span id="save-status" style="font-size: 0.85rem; color: var(--muted);">Read-Only Mode</span>
+        </div>
+        <button id="enable-edit-btn">Exit Editing</button>
+    </div>
+
+    <div id="toc-container">
+        <div class="toc-header">
+            <h3 style="margin:0;">Table of Contents</h3>
+            <button id="toc-level-btn" type="button">Show Entries</button>
+        </div>
+        <div id="toc"><ul></ul></div>
+    </div>
+
+    <main id="app-root"></main>
+    <button class="add-btn add-section" style="margin-top: 2rem;">+ Add Section</button>
+    <div id="toast" class="">✓ Saved</div>
+    <div id="version-badge">v0.1.0</div>
+    <div id="help-modal" hidden="">
+        <div class="help-card" role="dialog" aria-modal="true" aria-labelledby="help-title">
+            <h2 id="help-title">How To Use This Page</h2>
+            <p>This page helps you collect notes in a clean structure: Sections, optional Subsections, and Entries.</p>
+            <p><strong>Browser requirement:</strong> editing and file saving in this page only work in Chromium-based browsers (for example: Chrome, Edge, Brave, Arc, Opera).</p>
+
+            <h3>1. Start And Stop Editing</h3>
+            <ul>
+                <li>Click <strong>Enable Editing</strong> to make changes.</li>
+                <li>Click <strong>Exit Editing</strong> to lock the page again.</li>
+                <li>When locked, nothing can be edited by accident.</li>
+            </ul>
+
+            <h3>2. Add Your Content</h3>
+            <ul>
+                <li>Use <strong>+ Add Section</strong> for a new big topic.</li>
+                <li>Use <strong>+ Add Entry</strong> inside a section for individual notes.</li>
+                <li>Use <strong>+ Add Subsection</strong> inside a section when you want one more level of grouping.</li>
+                <li>Use <strong>+ Add Entry</strong> inside a subsection for individual notes.</li>
+                <li>Use the red delete buttons in editing mode to remove sections, subsections, or entries.</li>
+                <li>New section/subsection titles auto-focus so you can type right away.</li>
+            </ul>
+
+            <h3>3. Write Notes (Simple Formatting)</h3>
+            <ul>
+                <li>In note text boxes, press <strong>Ctrl/Cmd + B</strong> for bold.</li>
+                <li>Press <strong>Ctrl/Cmd + I</strong> for italic.</li>
+                <li>Press <strong>Enter</strong> for a new line.</li>
+                <li>For section and subsection titles, pressing <strong>Enter</strong> saves that title line (no extra line break).</li>
+            </ul>
+
+            <h3>4. Table Of Contents (TOC)</h3>
+            <ul>
+                <li>The TOC updates as you edit.</li>
+                <li>Use <strong>Show Entries / Hide Entries</strong> to include note titles in the TOC.</li>
+            </ul>
+
+            <h3>5. Saving</h3>
+            <ul>
+                <li>Saves happen automatically while editing.</li>
+                <li>You can force a save with <strong>Ctrl/Cmd + S</strong>.</li>
+                <li>A green “Saved” message confirms a successful save.</li>
+            </ul>
+
+            <h3>6. Reordering</h3>
+            <ul>
+                <li>When editing is on, drag using the <strong>⋮⋮</strong> handles to reorder sections, subsections, or entries within the same container.</li>
+            </ul>
+
+            <h3>7. Reset Everything (Destructive)</h3>
+            <ul>
+                <li>Click <strong>Reset Document</strong> to clear all sections/subsections/entries and reset the title.</li>
+                <li>You must type the exact page title to confirm.</li>
+            </ul>
+
+            <h3>8. Create A New Document</h3>
+            <ul>
+                <li>In your file manager, copy this HTML file and rename the copy.</li>
+                <li>Open the copied file in your browser to start a clean new document.</li>
+            </ul>
+
+            <div class="help-actions">
+                <button id="close-help-btn" type="button">Close Help</button>
+            </div>
+        </div>
+    </div>
+    <div id="reset-modal" hidden="">
+        <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+            <h3 id="reset-title">Reset This Document?</h3>
+            <p>This will remove all sections, subsections, and entries and reset the title.</p>
+            <p>To confirm, type this exact title: <strong id="reset-required-title">Clippings Manager</strong></p>
+            <input id="reset-confirm-input" type="text" autocomplete="off" placeholder="Type the exact title here">
+            <div class="confirm-actions">
+                <button id="cancel-reset-btn" type="button">Cancel</button>
+                <button id="confirm-reset-btn" type="button" disabled="">Reset Now</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let fileHandle;
+        let saveTimeout;
+        let saveInProgress = false;
+        let pendingSave = false;
+        let listenersBound = false;
+        let tocIncludeEntries = false;
+        let isUnsupportedBrowser = false;
+        let resetExpectedTitle = '';
+        const statusEl = document.getElementById('save-status');
+        const helpModalEl = document.getElementById('help-modal');
+        const resetModalEl = document.getElementById('reset-modal');
+
+        const editableSelector = '[contenteditable]';
+
+        function setEditingMode(isEditing) {
+            document.body.classList.toggle('is-editing', isEditing);
+            document.querySelectorAll(editableSelector).forEach((el) => {
+                el.setAttribute('contenteditable', isEditing ? 'true' : 'false');
+            });
+            const editBtn = document.getElementById('enable-edit-btn');
+            if (editBtn) editBtn.innerText = isEditing ? 'Exit Editing' : 'Enable Editing';
+            const resetBtn = document.getElementById('reset-btn');
+            if (resetBtn) resetBtn.hidden = !isEditing;
+            statusEl.innerText = isEditing ? 'Editing Enabled - Auto-saving...' : 'Read-Only Mode';
+        }
+
+        async function hydrateFromHandle(handle) {
+            if (!handle) return false;
+            try {
+                const perm = await handle.queryPermission({ mode: 'read' });
+                if (perm !== 'granted') return false;
+
+                const file = await handle.getFile();
+                const text = await file.text();
+                if (!text) return false;
+
+                const parser = new DOMParser();
+                const parsed = parser.parseFromString(text, 'text/html');
+                const parsedTitle = parsed.getElementById('main-title');
+                const parsedRoot = parsed.getElementById('app-root');
+
+                if (!parsedTitle || !parsedRoot) return false;
+
+                document.getElementById('main-title').innerHTML = parsedTitle.innerHTML;
+                document.getElementById('app-root').innerHTML = parsedRoot.innerHTML;
+                document.title = parsedTitle.innerText.trim() || 'Untitled Document';
+                fileHandle = handle;
+                generateTOC();
+                return true;
+            } catch (err) {
+                console.error('Could not hydrate from saved file handle:', err);
+                return false;
+            }
+        }
+
+        function updateTocToggleLabel() {
+            const btn = document.getElementById('toc-level-btn');
+            if (!btn) return;
+            btn.innerText = tocIncludeEntries ? 'Hide Entries' : 'Show Entries';
+        }
+
+        function openHelp() {
+            if (!helpModalEl) return;
+            helpModalEl.hidden = false;
+        }
+
+        function closeHelp() {
+            if (!helpModalEl) return;
+            helpModalEl.hidden = true;
+        }
+
+        function getPageTitleText() {
+            const titleText = document.getElementById('main-title').innerText.trim();
+            return titleText || 'Untitled Document';
+        }
+
+        function openResetModal() {
+            if (!fileHandle) {
+                statusEl.innerText = 'Enable Editing first to connect a file';
+                return;
+            }
+
+            const requiredTitleEl = document.getElementById('reset-required-title');
+            const confirmInputEl = document.getElementById('reset-confirm-input');
+            const confirmBtnEl = document.getElementById('confirm-reset-btn');
+            resetExpectedTitle = getPageTitleText();
+
+            requiredTitleEl.innerText = resetExpectedTitle;
+            confirmInputEl.value = '';
+            confirmBtnEl.disabled = true;
+            resetModalEl.hidden = false;
+            confirmInputEl.focus();
+        }
+
+        function closeResetModal() {
+            if (!resetModalEl) return;
+            resetModalEl.hidden = true;
+        }
+
+        function updateResetConfirmState() {
+            const entered = document.getElementById('reset-confirm-input').value.trim();
+            document.getElementById('confirm-reset-btn').disabled = entered !== resetExpectedTitle;
+        }
+
+        function resetDocumentNow() {
+            document.getElementById('main-title').innerText = 'Clippings Manager';
+            document.title = 'Clippings Manager';
+            document.getElementById('app-root').innerHTML = '';
+            closeResetModal();
+            triggerUpdate();
+        }
+
+        function insertFragmentAtCursor(fragment) {
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0) return;
+
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+            const nodeToInsert = fragment;
+            const isFragment = nodeToInsert.nodeType === Node.DOCUMENT_FRAGMENT_NODE;
+            const lastNode = isFragment ? nodeToInsert.lastChild : nodeToInsert;
+            range.insertNode(nodeToInsert);
+
+            if (!lastNode) return;
+            range.setStartAfter(lastNode);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+
+        function isTextEditorTarget(node) {
+            return !!(node && node.classList && node.classList.contains('text'));
+        }
+
+        function isSubsectionOrSectionTarget(node) {
+            return !!(node && node.classList && (node.classList.contains('subsection-title') || node.classList.contains('section-title')));
+        }
+
+        function normalizeBreaksInFragment(fragment) {
+            while (fragment.firstChild && fragment.firstChild.nodeName === 'BR') {
+                fragment.removeChild(fragment.firstChild);
+            }
+            while (fragment.lastChild && fragment.lastChild.nodeName === 'BR') {
+                fragment.removeChild(fragment.lastChild);
+            }
+        }
+
+        function sanitizeHtmlToFragment(html) {
+            const template = document.createElement('template');
+            template.innerHTML = html || '';
+
+            const out = document.createDocumentFragment();
+            const blockTags = new Set(['P', 'DIV', 'LI', 'UL', 'OL', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE']);
+
+            function walk(node, parent) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    parent.appendChild(document.createTextNode(node.textContent || ''));
+                    return;
+                }
+
+                if (node.nodeType !== Node.ELEMENT_NODE) return;
+                const tag = node.tagName.toUpperCase();
+
+                if (tag === 'BR') {
+                    parent.appendChild(document.createElement('br'));
+                    return;
+                }
+
+                if (tag === 'B' || tag === 'STRONG') {
+                    const strong = document.createElement('strong');
+                    node.childNodes.forEach((child) => walk(child, strong));
+                    if (strong.childNodes.length > 0) parent.appendChild(strong);
+                    return;
+                }
+
+                if (tag === 'I' || tag === 'EM') {
+                    const em = document.createElement('em');
+                    node.childNodes.forEach((child) => walk(child, em));
+                    if (em.childNodes.length > 0) parent.appendChild(em);
+                    return;
+                }
+
+                node.childNodes.forEach((child) => walk(child, parent));
+                if (blockTags.has(tag)) {
+                    parent.appendChild(document.createElement('br'));
+                }
+            }
+
+            template.content.childNodes.forEach((child) => walk(child, out));
+            normalizeBreaksInFragment(out);
+            return out;
+        }
+
+        function insertPlainText(text) {
+            const sanitized = String(text || '').replace(/\r\n/g, '\n');
+
+            const fragment = document.createDocumentFragment();
+            sanitized.split('\n').forEach((line, idx) => {
+                if (idx > 0) fragment.appendChild(document.createElement('br'));
+                fragment.appendChild(document.createTextNode(line));
+            });
+
+            insertFragmentAtCursor(fragment);
+        }
+
+        function sanitizeTextFormattingInRoot(root) {
+            root.querySelectorAll('.text').forEach((el) => {
+                const clean = sanitizeHtmlToFragment(el.innerHTML);
+                el.replaceChildren(clean);
+            });
+        }
+
+        function saveNow() {
+            clearTimeout(saveTimeout);
+            autoTitle();
+            generateTOC();
+            statusEl.innerText = 'Saving...';
+            saveToDisk();
+        }
+
+        function focusEditableAtEnd(el) {
+            if (!el) return;
+            el.focus();
+
+            const selection = window.getSelection();
+            if (!selection) return;
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+
+        function bindEditingListeners() {
+            if (listenersBound) return;
+            listenersBound = true;
+
+            document.getElementById('app-root').addEventListener('input', triggerUpdate);
+            document.getElementById('app-root').addEventListener('keyup', (e) => {
+                if (isSubsectionOrSectionTarget(e.target)) {
+                    triggerUpdate(e);
+                }
+            });
+            document.getElementById('main-title').addEventListener('input', (e) => {
+                document.title = e.target.innerText || 'Untitled Document';
+                triggerUpdate(e);
+            });
+            document.getElementById('help-btn').addEventListener('click', openHelp);
+            document.getElementById('close-help-btn').addEventListener('click', closeHelp);
+            helpModalEl.addEventListener('click', (e) => {
+                if (e.target === helpModalEl) closeHelp();
+            });
+            document.getElementById('reset-btn').addEventListener('click', openResetModal);
+            document.getElementById('cancel-reset-btn').addEventListener('click', closeResetModal);
+            document.getElementById('confirm-reset-btn').addEventListener('click', resetDocumentNow);
+            document.getElementById('reset-confirm-input').addEventListener('input', updateResetConfirmState);
+            document.getElementById('reset-confirm-input').addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                if (!document.getElementById('confirm-reset-btn').disabled) {
+                    resetDocumentNow();
+                }
+            });
+            resetModalEl.addEventListener('click', (e) => {
+                if (e.target === resetModalEl) closeResetModal();
+            });
+            document.getElementById('toc-level-btn').addEventListener('click', () => {
+                tocIncludeEntries = !tocIncludeEntries;
+                localStorage.setItem('toc-include-entries', tocIncludeEntries ? '1' : '0');
+                updateTocToggleLabel();
+                generateTOC();
+            });
+
+            // Force rich paste/drop content into plain text to prevent structural HTML injection.
+            document.addEventListener('paste', (e) => {
+                if (!document.body.classList.contains('is-editing')) return;
+                const editableTarget = e.target.closest('[contenteditable="true"]');
+                if (!editableTarget) return;
+
+                e.preventDefault();
+                if (isTextEditorTarget(editableTarget)) {
+                    const html = (e.clipboardData || window.clipboardData).getData('text/html');
+                    if (html) {
+                        insertFragmentAtCursor(sanitizeHtmlToFragment(html));
+                    } else {
+                        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+                        insertPlainText(text);
+                    }
+                } else {
+                    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+                    insertPlainText(text);
+                }
+                triggerUpdate({ target: editableTarget });
+            });
+
+            document.addEventListener('drop', (e) => {
+                if (!document.body.classList.contains('is-editing')) return;
+                if (draggedItem) return; // preserve internal drag-and-drop behavior
+
+                const editableTarget = e.target.closest('[contenteditable="true"]');
+                if (!editableTarget) return;
+
+                e.preventDefault();
+                editableTarget.focus();
+                if (isTextEditorTarget(editableTarget)) {
+                    const html = (e.dataTransfer && e.dataTransfer.getData('text/html')) || '';
+                    if (html) {
+                        insertFragmentAtCursor(sanitizeHtmlToFragment(html));
+                    } else {
+                        const text = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || '';
+                        insertPlainText(text);
+                    }
+                } else {
+                    const text = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || '';
+                    insertPlainText(text);
+                }
+                triggerUpdate({ target: editableTarget });
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (!helpModalEl.hidden && e.key === 'Escape') {
+                    e.preventDefault();
+                    closeHelp();
+                    return;
+                }
+                if (!resetModalEl.hidden && e.key === 'Escape') {
+                    e.preventDefault();
+                    closeResetModal();
+                    return;
+                }
+
+                if (!document.body.classList.contains('is-editing')) return;
+                const editableTarget = e.target.closest('[contenteditable="true"]');
+                if (!editableTarget) return;
+
+                const isMod = e.ctrlKey || e.metaKey;
+                if (isMod && !e.shiftKey && !e.altKey) {
+                    const key = e.key.toLowerCase();
+                    if (key === 's') {
+                        e.preventDefault();
+                        if (!fileHandle) return;
+                        saveNow();
+                        return;
+                    }
+
+                    if (key === 'b' || key === 'i') {
+                        e.preventDefault();
+                        if (!isTextEditorTarget(editableTarget)) return;
+
+                        document.execCommand(key === 'b' ? 'bold' : 'italic', false, null);
+                        triggerUpdate({ target: editableTarget });
+                        return;
+                    }
+                }
+
+                if (e.key === 'Enter' && isTextEditorTarget(editableTarget)) {
+                    e.preventDefault();
+                    insertFragmentAtCursor(document.createElement('br'));
+                    triggerUpdate({ target: editableTarget });
+                    return;
+                }
+
+                if (e.key === 'Enter' && isSubsectionOrSectionTarget(editableTarget)) {
+                    e.preventDefault();
+                    editableTarget.blur();
+                    triggerUpdate({ target: editableTarget });
+                }
+            });
+        }
+
+        function buildSavableHtml() {
+            const snapshot = document.documentElement.cloneNode(true);
+            const snapshotBody = snapshot.querySelector('body');
+
+            if (snapshotBody) {
+                snapshotBody.classList.remove('is-editing');
+                snapshotBody.querySelectorAll('[contenteditable]').forEach((el) => {
+                    el.setAttribute('contenteditable', 'false');
+                });
+                sanitizeTextFormattingInRoot(snapshotBody);
+                snapshotBody.querySelectorAll('.dragging, .drag-over-top, .drag-over-bottom').forEach((el) => {
+                    el.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
+                });
+            }
+
+            const snapshotBtn = snapshot.querySelector('#enable-edit-btn');
+            if (snapshotBtn) snapshotBtn.removeAttribute('style');
+
+            const snapshotStatus = snapshot.querySelector('#save-status');
+            if (snapshotStatus) snapshotStatus.innerText = 'Read-Only Mode';
+
+            const snapshotToast = snapshot.querySelector('#toast');
+            if (snapshotToast) snapshotToast.classList.remove('show');
+            const snapshotHelpModal = snapshot.querySelector('#help-modal');
+            if (snapshotHelpModal) snapshotHelpModal.setAttribute('hidden', '');
+            const snapshotResetModal = snapshot.querySelector('#reset-modal');
+            if (snapshotResetModal) snapshotResetModal.setAttribute('hidden', '');
+            const snapshotResetInput = snapshot.querySelector('#reset-confirm-input');
+            if (snapshotResetInput) snapshotResetInput.value = '';
+            const snapshotResetBtn = snapshot.querySelector('#confirm-reset-btn');
+            if (snapshotResetBtn) snapshotResetBtn.setAttribute('disabled', '');
+
+            return "<!DOCTYPE html>\n" + snapshot.outerHTML;
+        }
+
+        // SELF-HEALING: Force reset to read-only mode on every page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            tocIncludeEntries = localStorage.getItem('toc-include-entries') === '1';
+            updateTocToggleLabel();
+            setEditingMode(false);
+            const supportsFileSystemAccess = typeof window.showOpenFilePicker === 'function';
+            if (!supportsFileSystemAccess) {
+                isUnsupportedBrowser = true;
+                statusEl.innerText = 'Use a Chromium-based browser for editing/saving';
+                const editBtn = document.getElementById('enable-edit-btn');
+                if (editBtn) {
+                    editBtn.hidden = true;
+                }
+                const resetBtn = document.getElementById('reset-btn');
+                if (resetBtn) {
+                    resetBtn.hidden = true;
+                }
+                const helpBtn = document.getElementById('help-btn');
+                if (helpBtn) {
+                    helpBtn.hidden = true;
+                }
+            }
+            
+            // Clean up any lingering inline styles that might have gotten saved previously
+            const btn = document.getElementById('enable-edit-btn');
+            if (btn && !isUnsupportedBrowser) btn.removeAttribute('style');
+            
+            bindEditingListeners();
+            generateTOC();
+        });
+
+        document.getElementById('enable-edit-btn').addEventListener('click', async () => {
+            if (document.body.classList.contains('is-editing')) {
+                setEditingMode(false);
+                return;
+            }
+
+            try {
+                if (!fileHandle) {
+                    const pickerOptions = {
+                        id: 'clippings-open-file',
+                        types: [{ description: 'HTML File', accept: {'text/html': ['.html']} }],
+                        multiple: false
+                    };
+                    [fileHandle] = await window.showOpenFilePicker(pickerOptions);
+                }
+                
+                setEditingMode(true);
+
+                generateTOC();
+            } catch (err) {
+                console.error("Editing aborted or failed:", err);
+            }
+        });
+
+        function triggerUpdate(e) {
+            if (e && e.target && e.target.classList.contains('entry-title')) {
+                e.target.dataset.auto = "false";
+            }
+            
+            autoTitle();
+            generateTOC();
+            
+            clearTimeout(saveTimeout);
+            statusEl.innerText = 'Saving...';
+            saveTimeout = setTimeout(saveToDisk, 500); 
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+            statusEl.innerText = 'Editing Enabled - Auto-saving...';
+        }
+
+        async function saveToDisk() {
+            if (!fileHandle) return;
+            if (saveInProgress) {
+                pendingSave = true;
+                return;
+            }
+
+            saveInProgress = true;
+            try {
+                const htmlContent = buildSavableHtml();
+
+                const writable = await fileHandle.createWritable();
+                await writable.write(htmlContent);
+                await writable.close();
+                
+                showToast();
+            } catch (err) {
+                statusEl.innerText = 'Error saving!';
+                console.error("Save failed:", err);
+            } finally {
+                saveInProgress = false;
+                if (pendingSave) {
+                    pendingSave = false;
+                    saveToDisk();
+                }
+            }
+        }
+
+        function autoTitle() {
+            document.querySelectorAll('.entry').forEach(entry => {
+                const titleEl = entry.querySelector('.entry-title');
+                const sourceText = entry.querySelector('.source').innerText.trim();
+                const bodyText = entry.querySelector('.text').innerText.trim();
+
+                const words = bodyText.split(/\s+/).slice(0, 4).join(' ');
+                const generatedTitle = `${sourceText ? sourceText + ' - ' : ''}${words}${words.length > 0 ? '...' : ''}`;
+
+                if (titleEl.innerText.trim() === '') {
+                    titleEl.dataset.auto = "true";
+                }
+
+                if (titleEl.dataset.auto === "true" || !titleEl.hasAttribute('data-auto')) {
+                    if (generatedTitle.length > 3 && document.activeElement !== titleEl) {
+                        titleEl.innerText = generatedTitle;
+                        titleEl.dataset.auto = "true";
+                    }
+                }
+            });
+        }
+
+        function getDirectChildItems(parent, selector) {
+            return Array.from(parent.children).filter((child) => child.matches(selector));
+        }
+
+        function appendEntriesToToc(parentItem, entryNodes, idPrefix) {
+            if (!tocIncludeEntries || entryNodes.length === 0) return;
+
+            const entryList = document.createElement('ul');
+            entryNodes.forEach((entry, eIdx) => {
+                entry.id = `${idPrefix}-${eIdx}`;
+                const rawTitle = entry.querySelector('.entry-title') ? entry.querySelector('.entry-title').innerText : '';
+                const entryTitle = rawTitle.trim() || 'Untitled Entry';
+
+                const entryItem = document.createElement('li');
+                const entryLink = document.createElement('a');
+                entryLink.href = `#${entry.id}`;
+                entryLink.textContent = entryTitle;
+                entryItem.appendChild(entryLink);
+                entryList.appendChild(entryItem);
+            });
+
+            parentItem.appendChild(entryList);
+        }
+
+        function generateTOC() {
+            const toc = document.getElementById('toc');
+            const topList = document.createElement('ul');
+
+            document.querySelectorAll('.section').forEach((sec, sIdx) => {
+                const sTitle = sec.querySelector('.section-title').innerText || 'Untitled Section';
+                sec.id = `sec-${sIdx}`;
+
+                const secItem = document.createElement('li');
+                const secStrong = document.createElement('strong');
+                const secLink = document.createElement('a');
+                secLink.href = `#${sec.id}`;
+                secLink.textContent = sTitle;
+                secStrong.appendChild(secLink);
+                secItem.appendChild(secStrong);
+
+                const sectionChildren = document.createElement('ul');
+                let subIdx = 0;
+                let directEntryIdx = 0;
+
+                Array.from(sec.children).forEach((child) => {
+                    if (child.matches('.subsection-group')) {
+                        const subsecTitle = child.querySelector('.subsection-title').innerText || 'Untitled Subsection';
+                        child.id = `subsec-${sIdx}-${subIdx}`;
+
+                        const subsecItem = document.createElement('li');
+                        const subsecLink = document.createElement('a');
+                        subsecLink.href = `#${child.id}`;
+                        subsecLink.textContent = subsecTitle;
+                        subsecItem.appendChild(subsecLink);
+
+                        appendEntriesToToc(subsecItem, getDirectChildItems(child, '.entry'), `entry-${sIdx}-${subIdx}`);
+                        sectionChildren.appendChild(subsecItem);
+                        subIdx += 1;
+                        return;
+                    }
+
+                    if (child.matches('.entry') && tocIncludeEntries) {
+                        child.id = `entry-${sIdx}-root-${directEntryIdx}`;
+                        const rawTitle = child.querySelector('.entry-title') ? child.querySelector('.entry-title').innerText : '';
+                        const entryTitle = rawTitle.trim() || 'Untitled Entry';
+
+                        const entryItem = document.createElement('li');
+                        const entryLink = document.createElement('a');
+                        entryLink.href = `#${child.id}`;
+                        entryLink.textContent = entryTitle;
+                        entryItem.appendChild(entryLink);
+                        sectionChildren.appendChild(entryItem);
+                        directEntryIdx += 1;
+                    }
+                });
+
+                if (sectionChildren.children.length > 0) {
+                    secItem.appendChild(sectionChildren);
+                }
+                topList.appendChild(secItem);
+            });
+
+            toc.replaceChildren(topList);
+        }
+
+        function createEntryMarkup() {
+            return `<h4><span class="item-toolbar"><span class="drag-handle" draggable="true">⋮⋮</span><span contenteditable="true" class="entry-title" data-placeholder="Title (Auto-generates if empty)"></span><button class="delete-btn" type="button" data-delete-type="entry">Delete Entry</button></span></h4>
+                    <div class="source" contenteditable="true" data-placeholder="Source..."></div>
+                    <div class="text" contenteditable="true" data-placeholder="Paste notes here..."></div>`;
+        }
+
+        function createSubsectionMarkup() {
+            return `<h3><span class="item-toolbar"><span class="drag-handle" draggable="true">⋮⋮</span><span contenteditable="true" class="subsection-title" data-placeholder="Subsection Title..."></span><button class="delete-btn" type="button" data-delete-type="subsection">Delete Subsection</button></span></h3>
+                    <button class="add-btn add-entry">+ Add Entry</button>`;
+        }
+
+        function createSectionMarkup() {
+            return `<h2><span class="item-toolbar"><span class="drag-handle" draggable="true">⋮⋮</span><span contenteditable="true" class="section-title" data-placeholder="Section Title..."></span><button class="delete-btn" type="button" data-delete-type="section">Delete Section</button></span></h2>
+                    <button class="add-btn add-subsection">+ Add Subsection</button>
+                    <button class="add-btn add-entry">+ Add Entry</button>`;
+        }
+
+        function deleteItem(button) {
+            const deleteType = button.dataset.deleteType;
+            const target = button.closest(deleteType === 'entry' ? '.entry' : deleteType === 'subsection' ? '.subsection-group' : '.section');
+            if (!target) return;
+
+            const labelTarget = target.querySelector(
+                deleteType === 'entry' ? '.entry-title' : deleteType === 'subsection' ? '.subsection-title' : '.section-title'
+            );
+            const label = (labelTarget && labelTarget.innerText.trim()) || `this ${deleteType}`;
+            const scopeNote = deleteType === 'entry' ? '' : ' This also removes everything inside it.';
+            if (!window.confirm(`Delete "${label}"?${scopeNote}`)) return;
+
+            target.remove();
+            triggerUpdate();
+        }
+
+        document.body.addEventListener('click', (e) => {
+            if (!document.body.classList.contains('is-editing')) return;
+
+            const deleteButton = e.target.closest('.delete-btn');
+            if (deleteButton) {
+                deleteItem(deleteButton);
+                return;
+            }
+
+            if (e.target.classList.contains('add-entry')) {
+                const newEntry = document.createElement('div');
+                newEntry.className = 'entry draggable';
+                newEntry.dataset.type = 'entry';
+                newEntry.innerHTML = createEntryMarkup();
+                e.target.parentNode.insertBefore(newEntry, e.target);
+                triggerUpdate();
+            }
+            
+            if (e.target.classList.contains('add-subsection')) {
+                const newSubsection = document.createElement('div');
+                newSubsection.className = 'subsection-group draggable';
+                newSubsection.dataset.type = 'subsection';
+                newSubsection.innerHTML = createSubsectionMarkup();
+                e.target.parentNode.insertBefore(newSubsection, e.target);
+                focusEditableAtEnd(newSubsection.querySelector('.subsection-title'));
+                triggerUpdate();
+            }
+
+            if (e.target.classList.contains('add-section')) {
+                const newSection = document.createElement('div');
+                newSection.className = 'section draggable';
+                newSection.dataset.type = 'section';
+                newSection.innerHTML = createSectionMarkup();
+                document.getElementById('app-root').appendChild(newSection);
+                focusEditableAtEnd(newSection.querySelector('.section-title'));
+                triggerUpdate();
+            }
+        });
+
+        let draggedItem = null;
+
+        document.addEventListener('dragstart', (e) => {
+            if (e.target.classList.contains('drag-handle')) {
+                draggedItem = e.target.closest('.draggable');
+                setTimeout(() => draggedItem.classList.add('dragging'), 0);
+                e.dataTransfer.effectAllowed = 'move';
+            } else {
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (!draggedItem) return;
+
+            const target = e.target.closest('.draggable');
+            if (!target || target === draggedItem || target.dataset.type !== draggedItem.dataset.type || target.parentNode !== draggedItem.parentNode) return;
+
+            const rect = target.getBoundingClientRect();
+            const midpoint = rect.top + rect.height / 2;
+
+            document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
+                el.classList.remove('drag-over-top', 'drag-over-bottom');
+            });
+
+            if (e.clientY < midpoint) {
+                target.classList.add('drag-over-top');
+            } else {
+                target.classList.add('drag-over-bottom');
+            }
+        });
+
+        document.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (!draggedItem) return;
+
+            const target = e.target.closest('.draggable');
+            
+            document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
+                el.classList.remove('drag-over-top', 'drag-over-bottom');
+            });
+
+            if (target && target !== draggedItem && target.dataset.type === draggedItem.dataset.type && target.parentNode === draggedItem.parentNode) {
+                const rect = target.getBoundingClientRect();
+                const midpoint = rect.top + rect.height / 2;
+                
+                if (e.clientY < midpoint) {
+                    target.parentNode.insertBefore(draggedItem, target);
+                } else {
+                    target.parentNode.insertBefore(draggedItem, target.nextSibling);
+                }
+                triggerUpdate();
+            }
+            
+            draggedItem.classList.remove('dragging');
+            draggedItem = null;
+        });
+
+        document.addEventListener('dragend', () => {
+            if (draggedItem) draggedItem.classList.remove('dragging');
+            document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
+                el.classList.remove('drag-over-top', 'drag-over-bottom');
+            });
+            draggedItem = null;
+        });
+    </script>
+
+
+
+
+
+
+
+
+
+
+</body></html>
