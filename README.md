@@ -60,7 +60,7 @@ There is no installer. This project is a single HTML file.
 
 To get started:
 
-1. Download [`clippings.html`](clippings.html) from this repository.
+1. Download [`clippings.html`](https://github.com/superkelvint/clippingsmanager/raw/refs/heads/main/clippings.html) from this repository.
 2. Save it somewhere on your computer as an `.html` file.
 3. Open that saved file in a Chromium-based browser such as Chrome, Edge, Brave, Arc, or Opera.
 4. Click `Enable Editing`.
