@@ -24,7 +24,11 @@ The app also generates a table of contents from your structure, so long note set
 
 ## Demo
 
-[Watch the walkthrough video](./clippings-demo.mp4)
+<p align="center">
+  <a href="clippings-demo.mp4">
+    Watch the walkthrough video!
+  </a>
+</p>
 
 ## Offline And Private
 
