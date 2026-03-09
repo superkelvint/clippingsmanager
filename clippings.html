@@ -37,7 +37,7 @@
             justify-content: space-between;
             align-items: center;
             margin-top: -0.5rem;
-            margin-bottom: 2rem;
+            margin-bottom: 1rem;
             padding-bottom: 1rem;
             border-bottom: 2px solid var(--border);
         }
@@ -79,8 +79,8 @@
             left: 24px;
             top: 84px;
             z-index: 1100;
-            background: #92400e;
-            box-shadow: 0 8px 20px rgba(146, 64, 14, 0.2);
+            background: #12804e;
+            box-shadow: 0 8px 20px rgba(46, 64, 14, 0.2);
         }
         #highlight-toggle-btn:hover { background: #78350f; }
 
@@ -169,6 +169,16 @@
             box-decoration-break: clone;
             -webkit-box-decoration-break: clone;
         }
+        .search-hit {
+            font-weight: 700;
+            color: #111827;
+            background: #fff200;
+            border-radius: 0.18em;
+            padding: 0 0.04em;
+            box-shadow: 0 0 0 1px rgba(120, 53, 15, 0.12);
+            box-decoration-break: clone;
+            -webkit-box-decoration-break: clone;
+        }
         #highlight-popup {
             position: fixed;
             z-index: 1400;
@@ -232,9 +242,9 @@
         /* Table of Contents */
         #toc-container {
             background: var(--card);
-            padding: 1.5rem;
+            padding: 1rem;
             border-radius: 8px;
-            margin-bottom: 3rem;
+            margin-bottom: 1.5rem;
         }
         .toc-header {
             display: flex;
@@ -255,6 +265,28 @@
         #toc-container > ul { padding-left: 0; }
         #toc-container a { color: #2563eb; text-decoration: underline; }
         #toc-container a:hover { color: #1d4ed8; text-decoration: underline; }
+        #search-container {
+            margin: 0 0 1rem;
+            padding: 0.55rem 0;
+            border-top: 2px solid rgba(120, 53, 15, 0.22);
+            border-bottom: 2px solid rgba(120, 53, 15, 0.22);
+        }
+        .search-toolbar {
+            padding: 0;
+        }
+        #entry-search {
+            width: 100%;
+            padding: 0.55rem 0.75rem;
+            border: 1px solid rgba(120, 53, 15, 0.28);
+            border-radius: 8px;
+            font-size: 0.92rem;
+            color: #1f2937;
+            background: rgba(255, 253, 240, 0.95);
+        }
+        #entry-search:focus {
+            outline: 2px solid rgba(37, 99, 235, 0.35);
+            border-color: #2563eb;
+        }
 
         /* Content Structure */
         .section { margin-bottom: 3rem; }
@@ -458,7 +490,7 @@
             cursor: not-allowed;
         }
     </style>
-<style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style></head>
+</head>
 <body class="" style="scroll-behavior: auto !important;">
     <button id="help-btn" type="button">Help</button>
     <button id="highlight-toggle-btn" type="button">Highlight Colors</button>
@@ -486,6 +518,11 @@
             <button id="toc-level-btn" type="button">Hide Entries</button>
         </div>
         <div id="toc"><ul></ul></div>
+    </div>
+    <div id="search-container">
+        <div class="search-toolbar">
+            <input id="entry-search" type="search" autocomplete="off" spellcheck="false" placeholder="Search entries">
+        </div>
     </div>
 
     <main id="app-root"></main>
@@ -591,6 +628,7 @@
         const highlightPaletteDataEl = document.getElementById('highlight-palette-data');
         const highlightPanelEl = document.getElementById('highlight-panel');
         const highlightToggleBtnEl = document.getElementById('highlight-toggle-btn');
+        const entrySearchEl = document.getElementById('entry-search');
 
         const editableSelector = '[contenteditable]';
         const defaultHighlightPalette = ['#facc15', '#86efac', '#93c5fd'];
@@ -656,6 +694,121 @@
         function closeHelp() {
             if (!helpModalEl) return;
             helpModalEl.hidden = true;
+        }
+
+        function unwrapElement(el) {
+            if (!el || !el.parentNode) return;
+            const parent = el.parentNode;
+            while (el.firstChild) {
+                parent.insertBefore(el.firstChild, el);
+            }
+            parent.removeChild(el);
+        }
+
+        function clearSearchDecorations(root = document) {
+            root.querySelectorAll('.search-hit').forEach((el) => unwrapElement(el));
+            root.normalize();
+        }
+
+        function getSearchTerms() {
+            if (!entrySearchEl) return [];
+            return entrySearchEl.value
+                .trim()
+                .toLowerCase()
+                .split(/\s+/)
+                .filter(Boolean);
+        }
+
+        function escapeRegExp(text) {
+            return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function highlightSearchMatches(container, terms) {
+            if (!container || terms.length === 0) return;
+
+            const pattern = terms
+                .map((term) => escapeRegExp(term))
+                .sort((a, b) => b.length - a.length)
+                .join('|');
+            if (!pattern) return;
+
+            const regex = new RegExp(pattern, 'gi');
+            const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+                acceptNode(node) {
+                    if (!node.textContent || !node.textContent.trim()) return NodeFilter.FILTER_REJECT;
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    if (parent.closest('.search-hit')) return NodeFilter.FILTER_REJECT;
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            });
+
+            const textNodes = [];
+            while (walker.nextNode()) {
+                textNodes.push(walker.currentNode);
+            }
+
+            textNodes.forEach((node) => {
+                regex.lastIndex = 0;
+                const text = node.textContent;
+                const matches = [...text.matchAll(regex)];
+                if (matches.length === 0) return;
+
+                const fragment = document.createDocumentFragment();
+                let lastIndex = 0;
+
+                matches.forEach((match) => {
+                    const index = match.index ?? -1;
+                    if (index < lastIndex) return;
+                    if (index > lastIndex) {
+                        fragment.appendChild(document.createTextNode(text.slice(lastIndex, index)));
+                    }
+                    const hit = document.createElement('span');
+                    hit.className = 'search-hit';
+                    hit.textContent = match[0];
+                    fragment.appendChild(hit);
+                    lastIndex = index + match[0].length;
+                });
+
+                if (lastIndex < text.length) {
+                    fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+                }
+
+                node.parentNode.replaceChild(fragment, node);
+            });
+        }
+
+        function applyEntrySearch() {
+            clearSearchDecorations(document);
+            const terms = getSearchTerms();
+            const hasTerms = terms.length > 0;
+
+            document.querySelectorAll('.entry').forEach((entry) => {
+                const textEl = entry.querySelector('.text');
+                const haystack = (textEl ? textEl.innerText : '').toLowerCase();
+                const matches = !hasTerms || terms.some((term) => haystack.includes(term));
+                entry.hidden = !matches;
+                if (matches && hasTerms) {
+                    highlightSearchMatches(textEl, terms);
+                }
+            });
+
+            document.querySelectorAll('.subsection-group').forEach((group) => {
+                const hasVisibleEntries = Array.from(group.querySelectorAll(':scope > .entry')).some((entry) => !entry.hidden);
+                group.hidden = hasTerms && !hasVisibleEntries;
+            });
+
+            document.querySelectorAll('.section').forEach((section) => {
+                const hasVisibleDirectEntries = Array.from(section.querySelectorAll(':scope > .entry')).some((entry) => !entry.hidden);
+                const hasVisibleSubsections = Array.from(section.querySelectorAll(':scope > .subsection-group')).some((group) => !group.hidden);
+                section.hidden = hasTerms && !hasVisibleDirectEntries && !hasVisibleSubsections;
+            });
+        }
+
+        function clearEntrySearch() {
+            if (!entrySearchEl || entrySearchEl.value === '') return;
+            entrySearchEl.value = '';
+            applyEntrySearch();
         }
 
         function getPageTitleText() {
@@ -984,6 +1137,10 @@
                 }
 
                 if (tag === 'SPAN') {
+                    if (node.classList.contains('search-hit')) {
+                        node.childNodes.forEach((child) => walk(child, parent));
+                        return;
+                    }
                     const highlightColor = normalizeColorValue(node.style.backgroundColor);
                     if (node.dataset.highlight === 'true' || highlightColor) {
                         const span = document.createElement('span');
@@ -1091,6 +1248,14 @@
                 updateTocToggleLabel();
                 generateTOC();
             });
+            if (entrySearchEl) {
+                entrySearchEl.addEventListener('input', applyEntrySearch);
+                entrySearchEl.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Escape') return;
+                    e.preventDefault();
+                    clearEntrySearch();
+                });
+            }
             document.getElementById('add-highlight-color-btn').addEventListener('click', () => {
                 highlightPalette.push(defaultHighlightPalette[highlightPalette.length % defaultHighlightPalette.length]);
                 persistHighlightPalette();
@@ -1218,6 +1383,12 @@
                 snapshotBody.querySelectorAll('[contenteditable]').forEach((el) => {
                     el.setAttribute('contenteditable', 'false');
                 });
+                clearSearchDecorations(snapshotBody);
+                const snapshotSearch = snapshotBody.querySelector('#entry-search');
+                if (snapshotSearch) snapshotSearch.value = '';
+                snapshotBody.querySelectorAll('.entry, .section, .subsection-group').forEach((el) => {
+                    el.hidden = false;
+                });
                 sanitizeTextFormattingInRoot(snapshotBody);
                 snapshotBody.querySelectorAll('.dragging, .drag-over-top, .drag-over-bottom').forEach((el) => {
                     el.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
@@ -1281,6 +1452,7 @@
             
             bindEditingListeners();
             generateTOC();
+            applyEntrySearch();
         });
 
         document.getElementById('enable-edit-btn').addEventListener('click', async () => {
@@ -1314,6 +1486,7 @@
             
             autoTitle();
             generateTOC();
+            applyEntrySearch();
             
             clearTimeout(saveTimeout);
             statusEl.innerText = 'Saving...';
@@ -1601,16 +1774,5 @@
             draggedItem = null;
         });
     </script>
-
-
-
-
-
-
-
-
-
-
-
 
 </body></html>
