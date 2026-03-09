@@ -25,6 +25,12 @@
             line-height: 1.6;
         }
 
+        @media (max-width: 980px) {
+            body {
+                padding: 7.75rem 1rem 2rem;
+            }
+        }
+
         /* UI Controls */
         #controls {
             display: flex;
@@ -68,10 +74,20 @@
         }
         #help-btn:hover { background: #1f2937; }
 
-        #reset-btn {
+        #highlight-toggle-btn {
             position: fixed;
             left: 24px;
             top: 84px;
+            z-index: 1100;
+            background: #92400e;
+            box-shadow: 0 8px 20px rgba(146, 64, 14, 0.2);
+        }
+        #highlight-toggle-btn:hover { background: #78350f; }
+
+        #reset-btn {
+            position: fixed;
+            left: 24px;
+            top: 134px;
             z-index: 1100;
             display: none;
             background: #991b1b;
@@ -79,6 +95,122 @@
         }
         #reset-btn:hover { background: #7f1d1d; }
         body.is-editing #reset-btn { display: inline-block; }
+
+        #highlight-panel {
+            position: fixed;
+            left: 24px;
+            top: 140px;
+            width: 260px;
+            z-index: 1080;
+            padding: 0.9rem;
+            border: 1px solid rgba(120, 53, 15, 0.28);
+            border-radius: 14px;
+            background: rgba(255, 250, 224, 0.96);
+            box-shadow: 0 14px 34px rgba(120, 53, 15, 0.15);
+        }
+        #highlight-panel[hidden] { display: none; }
+        #highlight-panel h3 {
+            margin: 0;
+            font-size: 1rem;
+            color: #422006;
+        }
+        #highlight-panel p {
+            margin: 0.4rem 0 0.75rem;
+            font-size: 0.82rem;
+            color: #6b4f1d;
+        }
+        .palette-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+        }
+        #add-highlight-color-btn {
+            padding: 0.35rem 0.65rem;
+            font-size: 0.78rem;
+            background: #92400e;
+        }
+        #add-highlight-color-btn:hover { background: #78350f; }
+        #highlight-palette-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.55rem;
+        }
+        .palette-row {
+            display: grid;
+            grid-template-columns: 42px 1fr auto;
+            align-items: center;
+            gap: 0.55rem;
+        }
+        .palette-color-input {
+            width: 42px;
+            height: 32px;
+            padding: 0;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+        }
+        .palette-preview {
+            height: 32px;
+            border: 1px solid rgba(120, 53, 15, 0.22);
+            border-radius: 999px;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+        }
+        .palette-remove-btn {
+            padding: 0.35rem 0.55rem;
+            border-radius: 999px;
+            background: #b91c1c;
+            font-size: 0.74rem;
+        }
+        .palette-remove-btn:hover { background: #991b1b; }
+        .highlight-mark {
+            border-radius: 0.2em;
+            padding: 0 0.05em;
+            box-decoration-break: clone;
+            -webkit-box-decoration-break: clone;
+        }
+        #highlight-popup {
+            position: fixed;
+            z-index: 1400;
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.45rem 0.5rem;
+            border: 1px solid rgba(17, 24, 39, 0.12);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 12px 36px rgba(17, 24, 39, 0.18);
+        }
+        #highlight-popup[hidden] { display: none; }
+        .highlight-popup-swatch {
+            width: 28px;
+            height: 28px;
+            border: 1px solid rgba(17, 24, 39, 0.2);
+            border-radius: 999px;
+            padding: 0;
+            cursor: pointer;
+            transition: transform 0.12s ease;
+        }
+        .highlight-popup-swatch:hover {
+            transform: translateY(-1px);
+        }
+        .highlight-popup-empty {
+            margin: 0;
+            font-size: 0.78rem;
+            color: #6b7280;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 980px) {
+            #highlight-panel {
+                position: fixed;
+                top: 130px;
+                left: 16px;
+                right: 16px;
+                width: auto;
+                margin: 0;
+            }
+        }
 
         body.is-editing #enable-edit-btn {
             background: #dc2626;
@@ -326,10 +458,19 @@
             cursor: not-allowed;
         }
     </style>
-<style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style></head>
+<style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style><style></style></head>
 <body class="" style="scroll-behavior: auto !important;">
     <button id="help-btn" type="button">Help</button>
+    <button id="highlight-toggle-btn" type="button">Highlight Colors</button>
     <button id="reset-btn" type="button">Reset Document</button>
+    <aside id="highlight-panel" hidden="">
+        <div class="palette-header">
+            <h3>Highlight Palette</h3>
+            <button id="add-highlight-color-btn" type="button">+ Add</button>
+        </div>
+        <p>Set colors here. Select note text and pick a color from the popup.</p>
+        <div id="highlight-palette-list"><div class="palette-row"><input type="color" class="palette-color-input" value="rgb(53, 192, 2)" aria-label="Highlight color 1"><div class="palette-preview" style="background-color: rgb(53, 192, 2);"></div><button type="button" class="palette-remove-btn">Remove</button></div><div class="palette-row"><input type="color" class="palette-color-input" value="rgb(134, 239, 172)" aria-label="Highlight color 2"><div class="palette-preview" style="background-color: rgb(134, 239, 172);"></div><button type="button" class="palette-remove-btn">Remove</button></div><div class="palette-row"><input type="color" class="palette-color-input" value="rgb(147, 197, 253)" aria-label="Highlight color 3"><div class="palette-preview" style="background-color: rgb(147, 197, 253);"></div><button type="button" class="palette-remove-btn">Remove</button></div></div>
+    </aside>
 
     <div id="controls">
         <div>
@@ -342,7 +483,7 @@
     <div id="toc-container">
         <div class="toc-header">
             <h3 style="margin:0;">Table of Contents</h3>
-            <button id="toc-level-btn" type="button">Show Entries</button>
+            <button id="toc-level-btn" type="button">Hide Entries</button>
         </div>
         <div id="toc"><ul></ul></div>
     </div>
@@ -350,7 +491,9 @@
     <main id="app-root"></main>
     <button class="add-btn add-section" style="margin-top: 2rem;">+ Add Section</button>
     <div id="toast" class="">✓ Saved</div>
+    <div id="highlight-popup" style="top: 485.944px; left: 815.84px;" hidden=""><button type="button" class="highlight-popup-swatch" title="Apply rgb(53, 192, 2) highlight" style="background-color: rgb(53, 192, 2);"></button><button type="button" class="highlight-popup-swatch" title="Apply rgb(134, 239, 172) highlight" style="background-color: rgb(134, 239, 172);"></button><button type="button" class="highlight-popup-swatch" title="Apply rgb(147, 197, 253) highlight" style="background-color: rgb(147, 197, 253);"></button></div>
     <div id="version-badge">v0.1.0</div>
+    <script id="highlight-palette-data" type="application/json">["rgb(53, 192, 2)","rgb(134, 239, 172)","rgb(147, 197, 253)"]</script>
     <div id="help-modal" hidden="">
         <div class="help-card" role="dialog" aria-modal="true" aria-labelledby="help-title">
             <h2 id="help-title">How To Use This Page</h2>
@@ -439,11 +582,18 @@
         let tocIncludeEntries = false;
         let isUnsupportedBrowser = false;
         let resetExpectedTitle = '';
+        let highlightPalette = [];
+        let highlightSelectionRange = null;
         const statusEl = document.getElementById('save-status');
         const helpModalEl = document.getElementById('help-modal');
         const resetModalEl = document.getElementById('reset-modal');
+        const highlightPopupEl = document.getElementById('highlight-popup');
+        const highlightPaletteDataEl = document.getElementById('highlight-palette-data');
+        const highlightPanelEl = document.getElementById('highlight-panel');
+        const highlightToggleBtnEl = document.getElementById('highlight-toggle-btn');
 
         const editableSelector = '[contenteditable]';
+        const defaultHighlightPalette = ['#facc15', '#86efac', '#93c5fd'];
 
         function setEditingMode(isEditing) {
             document.body.classList.toggle('is-editing', isEditing);
@@ -455,6 +605,12 @@
             const resetBtn = document.getElementById('reset-btn');
             if (resetBtn) resetBtn.hidden = !isEditing;
             statusEl.innerText = isEditing ? 'Editing Enabled - Auto-saving...' : 'Read-Only Mode';
+        }
+
+        function setHighlightPanelOpen(isOpen) {
+            if (!highlightPanelEl || !highlightToggleBtnEl) return;
+            highlightPanelEl.hidden = !isOpen;
+            highlightToggleBtnEl.innerText = isOpen ? 'Hide Highlights' : 'Highlight Colors';
         }
 
         async function hydrateFromHandle(handle) {
@@ -569,6 +725,220 @@
             return !!(node && node.classList && (node.classList.contains('subsection-title') || node.classList.contains('section-title')));
         }
 
+        function normalizeColorValue(rawColor) {
+            const probe = document.createElement('span');
+            probe.style.backgroundColor = '';
+            probe.style.backgroundColor = rawColor || '';
+            return probe.style.backgroundColor || '';
+        }
+
+        function readStoredHighlightPalette() {
+            try {
+                const raw = (highlightPaletteDataEl && highlightPaletteDataEl.textContent) || '';
+                const parsed = JSON.parse(raw);
+                if (!Array.isArray(parsed)) return [];
+                return parsed
+                    .map((value) => normalizeColorValue(value))
+                    .filter(Boolean);
+            } catch (err) {
+                console.warn('Could not parse highlight palette data:', err);
+                return [];
+            }
+        }
+
+        function persistHighlightPalette() {
+            if (highlightPaletteDataEl) {
+                highlightPaletteDataEl.textContent = JSON.stringify(highlightPalette);
+            }
+            localStorage.setItem('highlight-palette', JSON.stringify(highlightPalette));
+        }
+
+        function createHighlightPopupSwatch(color) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'highlight-popup-swatch';
+            button.title = `Apply ${color} highlight`;
+            button.style.backgroundColor = color;
+            button.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                applyHighlight(color);
+            });
+            return button;
+        }
+
+        function renderHighlightPopup() {
+            if (!highlightPopupEl) return;
+            highlightPopupEl.replaceChildren();
+
+            if (highlightPalette.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'highlight-popup-empty';
+                empty.textContent = 'Add a palette color first';
+                highlightPopupEl.appendChild(empty);
+                return;
+            }
+
+            highlightPalette.forEach((color) => {
+                highlightPopupEl.appendChild(createHighlightPopupSwatch(color));
+            });
+        }
+
+        function renderHighlightPaletteEditor() {
+            const list = document.getElementById('highlight-palette-list');
+            if (!list) return;
+
+            list.replaceChildren();
+            highlightPalette.forEach((color, index) => {
+                const row = document.createElement('div');
+                row.className = 'palette-row';
+
+                const input = document.createElement('input');
+                input.type = 'color';
+                input.className = 'palette-color-input';
+                input.value = color;
+                input.setAttribute('value', color);
+                input.setAttribute('aria-label', `Highlight color ${index + 1}`);
+                input.addEventListener('input', (e) => {
+                    const nextColor = normalizeColorValue(e.target.value) || defaultHighlightPalette[0];
+                    highlightPalette[index] = nextColor;
+                    input.setAttribute('value', nextColor);
+                    preview.style.backgroundColor = nextColor;
+                    persistHighlightPalette();
+                    renderHighlightPopup();
+                });
+
+                const preview = document.createElement('div');
+                preview.className = 'palette-preview';
+                preview.style.backgroundColor = color;
+
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.className = 'palette-remove-btn';
+                removeBtn.textContent = 'Remove';
+                removeBtn.disabled = highlightPalette.length <= 1;
+                removeBtn.addEventListener('click', () => {
+                    if (highlightPalette.length <= 1) return;
+                    highlightPalette.splice(index, 1);
+                    persistHighlightPalette();
+                    renderHighlightPaletteEditor();
+                    renderHighlightPopup();
+                    refreshHighlightPopup();
+                });
+
+                row.append(input, preview, removeBtn);
+                list.appendChild(row);
+            });
+        }
+
+        function initializeHighlightPalette() {
+            let palette = [];
+            palette = readStoredHighlightPalette();
+            if (palette.length === 0) {
+                try {
+                    const cached = JSON.parse(localStorage.getItem('highlight-palette') || '[]');
+                    if (Array.isArray(cached)) {
+                        palette = cached.map((value) => normalizeColorValue(value)).filter(Boolean);
+                    }
+                } catch (err) {
+                    console.warn('Could not read cached highlight palette:', err);
+                }
+            }
+            if (palette.length === 0) {
+                palette = [...defaultHighlightPalette];
+            }
+
+            highlightPalette = palette;
+            persistHighlightPalette();
+            renderHighlightPaletteEditor();
+            renderHighlightPopup();
+        }
+
+        function hideHighlightPopup() {
+            if (!highlightPopupEl) return;
+            highlightPopupEl.hidden = true;
+        }
+
+        function getClosestElement(node) {
+            if (!node) return null;
+            return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+        }
+
+        function getSelectionTextEditor(selection) {
+            if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+
+            const anchorEditor = getClosestElement(selection.anchorNode)?.closest('.text');
+            const focusEditor = getClosestElement(selection.focusNode)?.closest('.text');
+            if (!anchorEditor || !focusEditor || anchorEditor !== focusEditor) return null;
+            return anchorEditor;
+        }
+
+        function refreshHighlightPopup() {
+            if (!document.body.classList.contains('is-editing')) {
+                highlightSelectionRange = null;
+                hideHighlightPopup();
+                return;
+            }
+
+            const selection = window.getSelection();
+            const editor = getSelectionTextEditor(selection);
+            if (!editor) {
+                highlightSelectionRange = null;
+                hideHighlightPopup();
+                return;
+            }
+
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            if (!rect || (!rect.width && !rect.height)) {
+                highlightSelectionRange = null;
+                hideHighlightPopup();
+                return;
+            }
+
+            highlightSelectionRange = range.cloneRange();
+            renderHighlightPopup();
+            highlightPopupEl.hidden = false;
+
+            const popupRect = highlightPopupEl.getBoundingClientRect();
+            const top = Math.min(window.innerHeight - popupRect.height - 12, rect.bottom + 10);
+            const left = Math.max(12, Math.min(window.innerWidth - popupRect.width - 12, rect.left + (rect.width / 2) - (popupRect.width / 2)));
+            highlightPopupEl.style.top = `${Math.max(12, top)}px`;
+            highlightPopupEl.style.left = `${left}px`;
+        }
+
+        function applyHighlight(color) {
+            if (!highlightSelectionRange || highlightSelectionRange.collapsed) return;
+
+            const editor = getClosestElement(highlightSelectionRange.commonAncestorContainer)?.closest('.text');
+            if (!editor) return;
+
+            const range = highlightSelectionRange.cloneRange();
+            const fragment = range.extractContents();
+            if (!fragment.textContent || !fragment.textContent.trim()) {
+                hideHighlightPopup();
+                return;
+            }
+
+            const mark = document.createElement('span');
+            mark.className = 'highlight-mark';
+            mark.dataset.highlight = 'true';
+            mark.style.backgroundColor = normalizeColorValue(color);
+            mark.appendChild(fragment);
+            range.insertNode(mark);
+
+            const selection = window.getSelection();
+            if (selection) {
+                const postRange = document.createRange();
+                postRange.selectNodeContents(mark);
+                selection.removeAllRanges();
+                selection.addRange(postRange);
+                highlightSelectionRange = postRange.cloneRange();
+            }
+
+            triggerUpdate({ target: editor });
+            refreshHighlightPopup();
+        }
+
         function normalizeBreaksInFragment(fragment) {
             while (fragment.firstChild && fragment.firstChild.nodeName === 'BR') {
                 fragment.removeChild(fragment.firstChild);
@@ -611,6 +981,19 @@
                     node.childNodes.forEach((child) => walk(child, em));
                     if (em.childNodes.length > 0) parent.appendChild(em);
                     return;
+                }
+
+                if (tag === 'SPAN') {
+                    const highlightColor = normalizeColorValue(node.style.backgroundColor);
+                    if (node.dataset.highlight === 'true' || highlightColor) {
+                        const span = document.createElement('span');
+                        span.className = 'highlight-mark';
+                        span.dataset.highlight = 'true';
+                        span.style.backgroundColor = highlightColor || normalizeColorValue(node.getAttribute('data-highlight-color')) || defaultHighlightPalette[0];
+                        node.childNodes.forEach((child) => walk(child, span));
+                        if (span.childNodes.length > 0) parent.appendChild(span);
+                        return;
+                    }
                 }
 
                 node.childNodes.forEach((child) => walk(child, parent));
@@ -679,6 +1062,11 @@
                 triggerUpdate(e);
             });
             document.getElementById('help-btn').addEventListener('click', openHelp);
+            if (highlightToggleBtnEl) {
+                highlightToggleBtnEl.addEventListener('click', () => {
+                    setHighlightPanelOpen(highlightPanelEl.hidden);
+                });
+            }
             document.getElementById('close-help-btn').addEventListener('click', closeHelp);
             helpModalEl.addEventListener('click', (e) => {
                 if (e.target === helpModalEl) closeHelp();
@@ -702,6 +1090,12 @@
                 localStorage.setItem('toc-include-entries', tocIncludeEntries ? '1' : '0');
                 updateTocToggleLabel();
                 generateTOC();
+            });
+            document.getElementById('add-highlight-color-btn').addEventListener('click', () => {
+                highlightPalette.push(defaultHighlightPalette[highlightPalette.length % defaultHighlightPalette.length]);
+                persistHighlightPalette();
+                renderHighlightPaletteEditor();
+                renderHighlightPopup();
             });
 
             // Force rich paste/drop content into plain text to prevent structural HTML injection.
@@ -799,6 +1193,20 @@
                     triggerUpdate({ target: editableTarget });
                 }
             });
+            document.addEventListener('selectionchange', () => {
+                window.requestAnimationFrame(refreshHighlightPopup);
+            });
+            document.addEventListener('scroll', hideHighlightPopup, true);
+            window.addEventListener('resize', refreshHighlightPopup);
+            document.addEventListener('mousedown', (e) => {
+                if (highlightPopupEl && highlightPopupEl.contains(e.target)) return;
+                if (e.target.closest('#highlight-panel')) return;
+                if (e.target.closest('#highlight-toggle-btn')) return;
+                if (!e.target.closest('.text')) {
+                    highlightSelectionRange = null;
+                    hideHighlightPopup();
+                }
+            });
         }
 
         function buildSavableHtml() {
@@ -840,6 +1248,8 @@
         window.addEventListener('DOMContentLoaded', async () => {
             tocIncludeEntries = localStorage.getItem('toc-include-entries') === '1';
             updateTocToggleLabel();
+            initializeHighlightPalette();
+            setHighlightPanelOpen(false);
             setEditingMode(false);
             const supportsFileSystemAccess = typeof window.showOpenFilePicker === 'function';
             if (!supportsFileSystemAccess) {
@@ -856,6 +1266,12 @@
                 const helpBtn = document.getElementById('help-btn');
                 if (helpBtn) {
                     helpBtn.hidden = true;
+                }
+                if (highlightToggleBtnEl) {
+                    highlightToggleBtnEl.hidden = true;
+                }
+                if (highlightPanelEl) {
+                    highlightPanelEl.hidden = true;
                 }
             }
             
@@ -1185,6 +1601,8 @@
             draggedItem = null;
         });
     </script>
+
+
 
 
 
