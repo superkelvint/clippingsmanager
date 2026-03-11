@@ -204,6 +204,23 @@
         .highlight-popup-swatch:hover {
             transform: translateY(-1px);
         }
+        .highlight-popup-delete {
+            border: 1px solid rgba(17, 24, 39, 0.2);
+            background: transparent;
+            border-radius: 999px;
+            padding: 0.35rem 0.8rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #111827;
+            cursor: pointer;
+        }
+        .highlight-popup-delete:hover {
+            background: rgba(17, 24, 39, 0.05);
+        }
+        .highlight-popup-delete:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
         .highlight-popup-empty {
             margin: 0;
             font-size: 0.78rem;
@@ -490,7 +507,7 @@
             cursor: not-allowed;
         }
     </style>
-</head>
+<style></style><style></style><style></style><style></style><style></style></head>
 <body class="" style="scroll-behavior: auto !important;">
     <button id="help-btn" type="button">Help</button>
     <button id="highlight-toggle-btn" type="button">Highlight Colors</button>
@@ -528,7 +545,7 @@
     <main id="app-root"></main>
     <button class="add-btn add-section" style="margin-top: 2rem;">+ Add Section</button>
     <div id="toast" class="">✓ Saved</div>
-    <div id="highlight-popup" style="top: 485.944px; left: 815.84px;" hidden=""><button type="button" class="highlight-popup-swatch" title="Apply rgb(53, 192, 2) highlight" style="background-color: rgb(53, 192, 2);"></button><button type="button" class="highlight-popup-swatch" title="Apply rgb(134, 239, 172) highlight" style="background-color: rgb(134, 239, 172);"></button><button type="button" class="highlight-popup-swatch" title="Apply rgb(147, 197, 253) highlight" style="background-color: rgb(147, 197, 253);"></button></div>
+    <div id="highlight-popup" style="top: 614.264px; left: 378.611px;" hidden=""><button type="button" class="highlight-popup-swatch" title="Apply rgb(53, 192, 2) highlight" style="background-color: rgb(53, 192, 2);"></button><button type="button" class="highlight-popup-swatch" title="Apply rgb(134, 239, 172) highlight" style="background-color: rgb(134, 239, 172);"></button><button type="button" class="highlight-popup-swatch" title="Apply rgb(147, 197, 253) highlight" style="background-color: rgb(147, 197, 253);"></button><button type="button" class="highlight-popup-delete">Unhighlight</button></div>
     <div id="version-badge">v0.1.0</div>
     <script id="highlight-palette-data" type="application/json">["rgb(53, 192, 2)","rgb(134, 239, 172)","rgb(147, 197, 253)"]</script>
     <div id="help-modal" hidden="">
@@ -621,6 +638,7 @@
         let resetExpectedTitle = '';
         let highlightPalette = [];
         let highlightSelectionRange = null;
+        let highlightTargetMark = null;
         const statusEl = document.getElementById('save-status');
         const helpModalEl = document.getElementById('help-modal');
         const resetModalEl = document.getElementById('reset-modal');
@@ -914,7 +932,22 @@
             button.style.backgroundColor = color;
             button.addEventListener('mousedown', (e) => {
                 e.preventDefault();
-                applyHighlight(color);
+                if (highlightTargetMark) {
+                    applyColorToActiveHighlight(color);
+                } else {
+                    applyHighlight(color);
+                }
+            });
+            return button;
+        }
+
+        function createHighlightPopupDelete() {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'highlight-popup-delete';
+            button.textContent = 'Unhighlight';
+            button.addEventListener('click', () => {
+                deleteActiveHighlight();
             });
             return button;
         }
@@ -928,12 +961,74 @@
                 empty.className = 'highlight-popup-empty';
                 empty.textContent = 'Add a palette color first';
                 highlightPopupEl.appendChild(empty);
+                if (highlightTargetMark) {
+                    const deleteBtn = createHighlightPopupDelete();
+                    highlightPopupEl.appendChild(deleteBtn);
+                }
                 return;
             }
 
             highlightPalette.forEach((color) => {
                 highlightPopupEl.appendChild(createHighlightPopupSwatch(color));
             });
+            if (highlightTargetMark) {
+                const deleteBtn = createHighlightPopupDelete();
+                highlightPopupEl.appendChild(deleteBtn);
+            }
+        }
+
+        function positionHighlightPopupNear(rect) {
+            if (!highlightPopupEl || !rect) return;
+
+            const popupRect = highlightPopupEl.getBoundingClientRect();
+            const targetWidth = rect.width || 0;
+            const targetLeft = rect.left || 0;
+            const popupTop = Math.min(window.innerHeight - popupRect.height - 12, rect.bottom + 10);
+            const popupLeft = Math.max(
+                12,
+                Math.min(
+                    window.innerWidth - popupRect.width - 12,
+                    targetLeft + targetWidth / 2 - popupRect.width / 2
+                )
+            );
+
+            highlightPopupEl.style.top = `${Math.max(12, popupTop)}px`;
+            highlightPopupEl.style.left = `${popupLeft}px`;
+        }
+
+        function showHighlightPopupForMark(mark) {
+            if (!mark || !highlightPopupEl) return;
+            highlightTargetMark = mark;
+            highlightSelectionRange = null;
+            renderHighlightPopup();
+            highlightPopupEl.hidden = false;
+            positionHighlightPopupNear(mark.getBoundingClientRect());
+        }
+
+        function applyColorToActiveHighlight(color) {
+            if (!highlightTargetMark) return;
+            const normalized = normalizeColorValue(color);
+            if (!normalized) return;
+
+            highlightTargetMark.style.backgroundColor = normalized;
+            highlightTargetMark.dataset.highlight = 'true';
+            highlightTargetMark.dataset.highlightColor = normalized;
+            const editor = highlightTargetMark.closest('.text');
+            triggerUpdate({ target: editor });
+            renderHighlightPopup();
+            positionHighlightPopupNear(highlightTargetMark.getBoundingClientRect());
+        }
+
+        function deleteActiveHighlight() {
+            if (!highlightTargetMark) return;
+            const editor = highlightTargetMark.closest('.text');
+            unwrapElement(highlightTargetMark);
+            highlightTargetMark = null;
+            highlightSelectionRange = null;
+            hideHighlightPopup();
+            if (editor) {
+                triggerUpdate({ target: editor });
+            }
         }
 
         function renderHighlightPaletteEditor() {
@@ -1009,6 +1104,8 @@
         function hideHighlightPopup() {
             if (!highlightPopupEl) return;
             highlightPopupEl.hidden = true;
+            highlightSelectionRange = null;
+            highlightTargetMark = null;
         }
 
         function getClosestElement(node) {
@@ -1026,13 +1123,19 @@
         }
 
         function refreshHighlightPopup() {
+            const selection = window.getSelection();
+            if (highlightTargetMark) {
+                if (selection && selection.rangeCount > 0 && selection.getRangeAt(0).intersectsNode(highlightTargetMark)) {
+                    return;
+                }
+                highlightTargetMark = null;
+            }
             if (!document.body.classList.contains('is-editing')) {
                 highlightSelectionRange = null;
                 hideHighlightPopup();
                 return;
             }
 
-            const selection = window.getSelection();
             const editor = getSelectionTextEditor(selection);
             if (!editor) {
                 highlightSelectionRange = null;
@@ -1051,17 +1154,13 @@
             highlightSelectionRange = range.cloneRange();
             renderHighlightPopup();
             highlightPopupEl.hidden = false;
-
-            const popupRect = highlightPopupEl.getBoundingClientRect();
-            const top = Math.min(window.innerHeight - popupRect.height - 12, rect.bottom + 10);
-            const left = Math.max(12, Math.min(window.innerWidth - popupRect.width - 12, rect.left + (rect.width / 2) - (popupRect.width / 2)));
-            highlightPopupEl.style.top = `${Math.max(12, top)}px`;
-            highlightPopupEl.style.left = `${left}px`;
+            positionHighlightPopupNear(rect);
         }
 
         function applyHighlight(color) {
             if (!highlightSelectionRange || highlightSelectionRange.collapsed) return;
 
+            highlightTargetMark = null;
             const editor = getClosestElement(highlightSelectionRange.commonAncestorContainer)?.closest('.text');
             if (!editor) return;
 
@@ -1367,10 +1466,22 @@
                 if (highlightPopupEl && highlightPopupEl.contains(e.target)) return;
                 if (e.target.closest('#highlight-panel')) return;
                 if (e.target.closest('#highlight-toggle-btn')) return;
+                const mark = e.target.closest('.highlight-mark');
+                if (mark && document.body.classList.contains('is-editing')) {
+                    highlightTargetMark = mark;
+                    return;
+                }
                 if (!e.target.closest('.text')) {
                     highlightSelectionRange = null;
                     hideHighlightPopup();
                 }
+            });
+            document.addEventListener('click', (e) => {
+                if (!document.body.classList.contains('is-editing')) return;
+                if (highlightPopupEl && highlightPopupEl.contains(e.target)) return;
+                const mark = e.target.closest('.highlight-mark');
+                if (!mark) return;
+                showHighlightPopupForMark(mark);
             });
         }
 
@@ -1774,5 +1885,6 @@
             draggedItem = null;
         });
     </script>
+
 
 </body></html>
