@@ -668,10 +668,11 @@
 		            isUnsupportedBrowser: false,
 		            resetExpectedTitle: '',
 		            highlightPalette: [],
+		            highlightPopupMode: 'hidden', // 'hidden' | 'selection' | 'mark'
 		            highlightSelectionRange: null,
-	            highlightTargetMark: null,
-	            tocDragState: null,
-	            tocRegenRaf: null,
+		            highlightTargetMark: null,
+		            tocDragState: null,
+		            tocRegenRaf: null,
 
 	            editLockKey: null,
 	            editLockHeartbeat: null,
@@ -1245,40 +1246,41 @@
 	            els.highlightPopup.style.left = `${popupLeft}px`;
 	        }
 
-	        function showHighlightPopupForMark(mark) {
-	            if (!mark || !els.highlightPopup) return;
-	            state.highlightTargetMark = mark;
-	            state.highlightSelectionRange = null;
-	            renderHighlightPopup();
-	            els.highlightPopup.hidden = false;
-	            positionHighlightPopupNear(mark.getBoundingClientRect());
-	        }
+		        function showHighlightPopupForMark(mark) {
+		            if (!mark || !els.highlightPopup) return;
+		            state.highlightPopupMode = 'mark';
+		            state.highlightTargetMark = mark;
+		            state.highlightSelectionRange = null;
+		            renderHighlightPopup();
+		            els.highlightPopup.hidden = false;
+		            positionHighlightPopupNear(mark.getBoundingClientRect());
+		        }
 
-	        function applyColorToActiveHighlight(color) {
-	            if (!state.highlightTargetMark) return;
-	            const normalized = normalizeColorValue(color);
-	            if (!normalized) return;
+		        function applyColorToActiveHighlight(color) {
+		            if (!state.highlightTargetMark) return;
+		            const normalized = normalizeColorValue(color);
+		            if (!normalized) return;
 
-	            state.highlightTargetMark.style.backgroundColor = normalized;
-	            state.highlightTargetMark.dataset.highlight = 'true';
-	            state.highlightTargetMark.dataset.highlightColor = normalized;
-	            const editor = state.highlightTargetMark.closest('.text');
-	            triggerContentUpdate({ target: editor });
-	            renderHighlightPopup();
-	            positionHighlightPopupNear(state.highlightTargetMark.getBoundingClientRect());
-	        }
+		            state.highlightTargetMark.style.backgroundColor = normalized;
+		            state.highlightTargetMark.dataset.highlight = 'true';
+		            state.highlightTargetMark.dataset.highlightColor = normalized;
+		            const editor = state.highlightTargetMark.closest('.text');
+		            triggerContentUpdate({ target: editor });
+		            showHighlightPopupForMark(state.highlightTargetMark);
+		        }
 
-	        function deleteActiveHighlight() {
-	            if (!state.highlightTargetMark) return;
-	            const editor = state.highlightTargetMark.closest('.text');
-	            unwrapElement(state.highlightTargetMark);
-	            state.highlightTargetMark = null;
-	            state.highlightSelectionRange = null;
-	            hideHighlightPopup();
-	            if (editor) {
-	                triggerContentUpdate({ target: editor });
-	            }
-	        }
+		        function deleteActiveHighlight() {
+		            if (!state.highlightTargetMark) return;
+		            const editor = state.highlightTargetMark.closest('.text');
+		            unwrapElement(state.highlightTargetMark);
+		            state.highlightTargetMark = null;
+		            state.highlightSelectionRange = null;
+		            state.highlightPopupMode = 'hidden';
+		            hideHighlightPopup();
+		            if (editor) {
+		                triggerContentUpdate({ target: editor });
+		            }
+		        }
 
 	        function renderHighlightPaletteEditor() {
             const list = document.getElementById('highlight-palette-list');
@@ -1352,12 +1354,13 @@
 	            renderHighlightPopup();
 	        }
 
-	        function hideHighlightPopup() {
-	            if (!els.highlightPopup) return;
-	            els.highlightPopup.hidden = true;
-	            state.highlightSelectionRange = null;
-	            state.highlightTargetMark = null;
-	        }
+		        function hideHighlightPopup() {
+		            if (!els.highlightPopup) return;
+		            els.highlightPopup.hidden = true;
+		            state.highlightPopupMode = 'hidden';
+		            state.highlightSelectionRange = null;
+		            state.highlightTargetMark = null;
+		        }
 
         function getClosestElement(node) {
             if (!node) return null;
@@ -1373,47 +1376,52 @@
             return anchorEditor;
         }
 
-	        function refreshHighlightPopup() {
-	            const selection = window.getSelection();
-	            if (state.highlightTargetMark) {
-	                if (selection && selection.rangeCount > 0 && selection.getRangeAt(0).intersectsNode(state.highlightTargetMark)) {
-	                    return;
-	                }
-	                state.highlightTargetMark = null;
-	            }
-	            if (!document.body.classList.contains('is-editing')) {
-	                state.highlightSelectionRange = null;
-	                hideHighlightPopup();
-	                return;
-	            }
+		        function refreshHighlightPopup() {
+		            if (!document.body.classList.contains('is-editing')) {
+		                hideHighlightPopup();
+		                return;
+		            }
 
-	            const editor = getSelectionTextEditor(selection);
-	            if (!editor) {
-	                state.highlightSelectionRange = null;
-	                hideHighlightPopup();
-	                return;
-	            }
+		            if (state.highlightPopupMode === 'mark') {
+		                if (!state.highlightTargetMark || !state.highlightTargetMark.isConnected) {
+		                    hideHighlightPopup();
+		                    return;
+		                }
+		                renderHighlightPopup();
+		                els.highlightPopup.hidden = false;
+		                positionHighlightPopupNear(state.highlightTargetMark.getBoundingClientRect());
+		                return;
+		            }
 
-            const range = selection.getRangeAt(0);
-	            const rect = range.getBoundingClientRect();
-	            if (!rect || (!rect.width && !rect.height)) {
-	                state.highlightSelectionRange = null;
-	                hideHighlightPopup();
-	                return;
-	            }
+		            const selection = window.getSelection();
+		            const editor = getSelectionTextEditor(selection);
+		            if (!editor) {
+		                hideHighlightPopup();
+		                return;
+		            }
 
-	            state.highlightSelectionRange = range.cloneRange();
-	            renderHighlightPopup();
-	            els.highlightPopup.hidden = false;
-	            positionHighlightPopupNear(rect);
-	        }
+		            const range = selection.getRangeAt(0);
+		            const rect = range.getBoundingClientRect();
+		            if (!rect || (!rect.width && !rect.height)) {
+		                hideHighlightPopup();
+		                return;
+		            }
 
-	        function applyHighlight(color) {
-	            if (!state.highlightSelectionRange || state.highlightSelectionRange.collapsed) return;
+		            state.highlightPopupMode = 'selection';
+		            state.highlightTargetMark = null;
+		            state.highlightSelectionRange = range.cloneRange();
+		            renderHighlightPopup();
+		            els.highlightPopup.hidden = false;
+		            positionHighlightPopupNear(rect);
+		        }
 
-	            state.highlightTargetMark = null;
-	            const editor = getClosestElement(state.highlightSelectionRange.commonAncestorContainer)?.closest('.text');
-	            if (!editor) return;
+		        function applyHighlight(color) {
+		            if (!state.highlightSelectionRange || state.highlightSelectionRange.collapsed) return;
+
+		            state.highlightPopupMode = 'selection';
+		            state.highlightTargetMark = null;
+		            const editor = getClosestElement(state.highlightSelectionRange.commonAncestorContainer)?.closest('.text');
+		            if (!editor) return;
 
 	            const range = state.highlightSelectionRange.cloneRange();
 	            const fragment = range.extractContents();
@@ -1425,10 +1433,10 @@
             const mark = document.createElement('span');
             mark.className = 'highlight-mark';
             mark.setAttribute('data-testid', 'highlight-mark');
-            mark.dataset.highlight = 'true';
-            mark.style.backgroundColor = normalizeColorValue(color);
-            mark.appendChild(fragment);
-            range.insertNode(mark);
+	            mark.dataset.highlight = 'true';
+	            mark.style.backgroundColor = normalizeColorValue(color);
+	            mark.appendChild(fragment);
+	            range.insertNode(mark);
 
             const selection = window.getSelection();
             if (selection) {
@@ -1439,9 +1447,9 @@
 	                state.highlightSelectionRange = postRange.cloneRange();
 	            }
 
-	            triggerContentUpdate({ target: editor });
-            refreshHighlightPopup();
-        }
+		            triggerContentUpdate({ target: editor });
+		            showHighlightPopupForMark(mark);
+	        }
 
         function normalizeBreaksInFragment(fragment) {
             while (fragment.firstChild && fragment.firstChild.nodeName === 'BR') {
@@ -1754,11 +1762,16 @@
 		            if (e.target.closest('#highlight-toggle-btn')) return;
 		            const mark = e.target.closest('.highlight-mark');
 		            if (mark && document.body.classList.contains('is-editing')) {
+		                state.highlightPopupMode = 'mark';
 		                state.highlightTargetMark = mark;
 		                return;
 		            }
-		            if (!e.target.closest('.text')) {
-		                state.highlightSelectionRange = null;
+		            const editor = e.target.closest('.text');
+		            if (!editor) {
+		                hideHighlightPopup();
+		                return;
+		            }
+		            if (state.highlightPopupMode === 'mark') {
 		                hideHighlightPopup();
 		            }
 		        }
