@@ -51,6 +51,7 @@ By default, the page opens in read-only mode. When you click `Enable Editing`, t
 - Changes are auto-saved back to the selected HTML file
 - `Ctrl/Cmd + S` forces an immediate save
 - Exiting editing returns the page to read-only mode
+- If the same file is in Editing mode in another tab, you’ll be warned to prevent accidental overwrites
 
 Because the document saves back into the HTML itself, you can duplicate the file to create a fresh notes document.
 
@@ -144,3 +145,22 @@ Editing and saving depend on the browser File System Access API. In practice, th
 ## No Setup
 
 There are no dependencies, no server, and no build step. Once you have the HTML file on your computer, the app works fully offline and keeps your notes in that local file.
+
+## Tests (Developer)
+
+End-to-end tests run the single-file app in headless Chrome and validate core flows like TOC-based reordering.
+
+- Install: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install` (uses your installed Chrome via Playwright `channel`)
+- Run: `npm test`
+- Skip (for hooks/CI): `SKIP_CLIPPINGS_E2E=1`
+- Use a different browser channel: `PW_CHROME_CHANNEL=chromium npm test`
+
+Tests run against a per-test temporary copy of `clippings.html` so the original file is never modified.
+
+### Git pre-commit hook
+
+This repo includes a versioned hook in `.githooks/`. Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
