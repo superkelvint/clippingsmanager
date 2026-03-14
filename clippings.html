@@ -670,6 +670,7 @@
 	            highlightSelectionRange: null,
 	            highlightTargetMark: null,
 	            tocDragState: null,
+	            tocRegenRaf: null,
 
 	            editLockKey: null,
 	            editLockHeartbeat: null,
@@ -687,7 +688,15 @@
 	        const EDIT_LOCK_HEARTBEAT_MS = 4000;
 	        const EDIT_LOCK_STALE_MS = 12000;
 
-        function safeParseJson(str) {
+	        function scheduleGenerateTOC() {
+	            if (state.tocRegenRaf) return;
+	            state.tocRegenRaf = window.requestAnimationFrame(() => {
+	                state.tocRegenRaf = null;
+	                generateTOC();
+	            });
+	        }
+
+	        function safeParseJson(str) {
             try {
                 return JSON.parse(str);
             } catch {
@@ -1830,7 +1839,7 @@
             try { releaseEditLock(); } catch {}
         });
 
-        document.getElementById('enable-edit-btn').addEventListener('click', async () => {
+	        document.getElementById('enable-edit-btn').addEventListener('click', async () => {
             if (document.body.classList.contains('is-editing')) {
                 releaseEditLock();
                 setEditingMode(false);
@@ -1850,13 +1859,13 @@
 	                const lockOk = await acquireEditLockForHandle(state.fileHandle);
 	                if (!lockOk) return;
 
-                setEditingMode(true);
+	                setEditingMode(true);
 
-                generateTOC();
-            } catch (err) {
-                console.error("Editing aborted or failed:", err);
-            }
-        });
+	                scheduleGenerateTOC();
+	            } catch (err) {
+	                console.error("Editing aborted or failed:", err);
+	            }
+	        });
 
 	        function scheduleAutosave() {
 	            clearTimeout(state.saveTimeout);
@@ -1877,17 +1886,23 @@
 	                e.target.dataset.auto = 'false';
 	            }
 
-	            const autoChanged = autoTitle();
-	            if (isTocTitleTarget(e && e.target) || (state.tocIncludeEntries && autoChanged)) {
-	                generateTOC();
+	            const target = e && e.target ? e.target : null;
+	            const isBodyOrSourceEdit = !!(target && target.closest && target.closest('.text, .source'));
+	            const entry = isBodyOrSourceEdit && target.closest ? target.closest('.entry') : null;
+	            const autoChanged = isBodyOrSourceEdit ? autoTitle(entry) : autoTitle();
+
+	            if (isTocTitleTarget(target) || (state.tocIncludeEntries && autoChanged)) {
+	                scheduleGenerateTOC();
 	            }
-	            applyEntrySearch();
+	            if (els.entrySearch && els.entrySearch.value.trim()) {
+	                applyEntrySearch();
+	            }
 	            scheduleAutosave();
 	        }
 
 	        function triggerStructureUpdate() {
 	            autoTitle();
-	            generateTOC();
+	            scheduleGenerateTOC();
 	            applyEntrySearch();
 	            scheduleAutosave();
 	        }
@@ -1932,27 +1947,41 @@
 	            }
 	        }
 
-	        function autoTitle() {
-	            let changed = false;
-	            document.querySelectorAll('.entry').forEach(entry => {
-	                const titleEl = entry.querySelector('.entry-title');
-	                const sourceText = entry.querySelector('.source').innerText.trim();
-	                const bodyText = entry.querySelector('.text').innerText.trim();
+	        function autoTitleForEntry(entry) {
+	            if (!entry) return false;
+	            const titleEl = entry.querySelector('.entry-title');
+	            if (!titleEl) return false;
 
-                const words = bodyText.split(/\s+/).slice(0, 4).join(' ');
-                const generatedTitle = `${sourceText ? sourceText + ' - ' : ''}${words}${words.length > 0 ? '...' : ''}`;
+	            const sourceEl = entry.querySelector('.source');
+	            const textEl = entry.querySelector('.text');
+	            const sourceText = (sourceEl ? sourceEl.innerText : '').trim();
+	            const bodyText = (textEl ? textEl.innerText : '').trim();
 
-	                if ((titleEl.textContent || '').trim() === '') {
-	                    titleEl.dataset.auto = "true";
-	                }
+	            const words = bodyText.split(/\s+/).slice(0, 4).join(' ');
+	            const generatedTitle = `${sourceText ? sourceText + ' - ' : ''}${words}${words.length > 0 ? '...' : ''}`;
 
-	                if (titleEl.dataset.auto === "true" || !titleEl.hasAttribute('data-auto')) {
-	                    if (generatedTitle.length > 3 && document.activeElement !== titleEl) {
+	            if ((titleEl.textContent || '').trim() === '') {
+	                titleEl.dataset.auto = 'true';
+	            }
+
+	            if (titleEl.dataset.auto === 'true' || !titleEl.hasAttribute('data-auto')) {
+	                if (generatedTitle.length > 3 && document.activeElement !== titleEl) {
+	                    if (titleEl.textContent !== generatedTitle) {
 	                        titleEl.textContent = generatedTitle;
-	                        titleEl.dataset.auto = "true";
-	                        changed = true;
 	                    }
+	                    titleEl.dataset.auto = 'true';
+	                    return true;
 	                }
+	            }
+	            return false;
+	        }
+
+	        function autoTitle(entry = null) {
+	            if (entry) return autoTitleForEntry(entry);
+
+	            let changed = false;
+	            document.querySelectorAll('.entry').forEach((el) => {
+	                changed = autoTitleForEntry(el) || changed;
 	            });
 	            return changed;
 	        }

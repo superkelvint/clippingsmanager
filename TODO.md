@@ -16,8 +16,8 @@ This file tracks the staff-engineer review items and their implementation progre
 
 ## Performance / scalability
 
-- [ ] Make `autoTitle()` incremental (only the edited entry) instead of scanning all entries each update.
-- [ ] Throttle/debounce `generateTOC()` and/or update only the affected subtree.
+- [x] ~~Make `autoTitle()` incremental (only the edited entry) instead of scanning all entries each update.~~
+- [x] ~~Throttle/debounce `generateTOC()` and/or update only the affected subtree.~~
 - [ ] Consider a “stable shell + serialized data blob” save format (still single-file) to avoid full-document cloning for save.
 
 ## Event / UI architecture
