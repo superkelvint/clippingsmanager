@@ -645,27 +645,37 @@
         </div>
     </div>
 
-    <script>
-        let fileHandle;
-        let saveTimeout;
-        let saveInProgress = false;
-        let pendingSave = false;
-        let listenersBound = false;
-	        let tocIncludeEntries = false;
-	        let isUnsupportedBrowser = false;
-	        let resetExpectedTitle = '';
-	        let highlightPalette = [];
-	        let highlightSelectionRange = null;
-	        let highlightTargetMark = null;
-	        let tocDragState = null;
-	        const statusEl = document.getElementById('save-status');
-	        const helpModalEl = document.getElementById('help-modal');
-	        const resetModalEl = document.getElementById('reset-modal');
-	        const highlightPopupEl = document.getElementById('highlight-popup');
-	        const highlightPaletteDataEl = document.getElementById('highlight-palette-data');
-	        const highlightPanelEl = document.getElementById('highlight-panel');
-	        const highlightToggleBtnEl = document.getElementById('highlight-toggle-btn');
-	        const entrySearchEl = document.getElementById('entry-search');
+	    <script>
+	        const els = {
+	            status: document.getElementById('save-status'),
+	            helpModal: document.getElementById('help-modal'),
+	            resetModal: document.getElementById('reset-modal'),
+	            highlightPopup: document.getElementById('highlight-popup'),
+	            highlightPaletteData: document.getElementById('highlight-palette-data'),
+	            highlightPanel: document.getElementById('highlight-panel'),
+	            highlightToggleBtn: document.getElementById('highlight-toggle-btn'),
+	            entrySearch: document.getElementById('entry-search'),
+	        };
+
+	        const state = {
+	            fileHandle: null,
+	            saveTimeout: null,
+	            saveInProgress: false,
+	            pendingSave: false,
+	            listenersBound: false,
+	            tocIncludeEntries: false,
+	            isUnsupportedBrowser: false,
+	            resetExpectedTitle: '',
+	            highlightPalette: [],
+	            highlightSelectionRange: null,
+	            highlightTargetMark: null,
+	            tocDragState: null,
+
+	            editLockKey: null,
+	            editLockHeartbeat: null,
+	            editLockChannel: null,
+	            editLockDisabled: false,
+	        };
 
         const editableSelector = '[contenteditable]';
         const defaultHighlightPalette = ['#facc15', '#86efac', '#93c5fd'];
@@ -673,13 +683,9 @@
             ? window.crypto.randomUUID()
             : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
         const EDIT_LOCK_PREFIX = 'clippings-edit-lock:';
-        const EDIT_LOCK_CHANNEL = 'clippings-edit-lock';
-        const EDIT_LOCK_HEARTBEAT_MS = 4000;
-        const EDIT_LOCK_STALE_MS = 12000;
-        let editLockKey = null;
-        let editLockHeartbeat = null;
-        let editLockChannel = null;
-        let editLockDisabled = false;
+	        const EDIT_LOCK_CHANNEL = 'clippings-edit-lock';
+	        const EDIT_LOCK_HEARTBEAT_MS = 4000;
+	        const EDIT_LOCK_STALE_MS = 12000;
 
         function safeParseJson(str) {
             try {
@@ -726,166 +732,166 @@
             }
         }
 
-        function writeEditLock(key, lock) {
+	        function writeEditLock(key, lock) {
             if (!key) return;
-            try {
-                localStorage.setItem(EDIT_LOCK_PREFIX + key, JSON.stringify(lock));
-            } catch {
-                editLockDisabled = true;
-            }
-        }
+	            try {
+	                localStorage.setItem(EDIT_LOCK_PREFIX + key, JSON.stringify(lock));
+	            } catch {
+	                state.editLockDisabled = true;
+	            }
+	        }
 
-        function clearEditLock(key) {
+	        function clearEditLock(key) {
             if (!key) return;
-            try {
-                localStorage.removeItem(EDIT_LOCK_PREFIX + key);
-            } catch {
-                editLockDisabled = true;
-            }
-        }
+	            try {
+	                localStorage.removeItem(EDIT_LOCK_PREFIX + key);
+	            } catch {
+	                state.editLockDisabled = true;
+	            }
+	        }
 
         function isEditLockStale(lock) {
             if (!lock || typeof lock.ts !== 'number') return true;
             return (Date.now() - lock.ts) > EDIT_LOCK_STALE_MS;
         }
 
-        function hasEditLock() {
-            if (editLockDisabled) return true;
-            if (!editLockKey) return false;
-            const lock = readEditLock(editLockKey);
-            return !!(lock && lock.owner === editSessionId && !isEditLockStale(lock));
-        }
+	        function hasEditLock() {
+	            if (state.editLockDisabled) return true;
+	            if (!state.editLockKey) return false;
+	            const lock = readEditLock(state.editLockKey);
+	            return !!(lock && lock.owner === editSessionId && !isEditLockStale(lock));
+	        }
 
-        function announceEditLock(type) {
-            if (!editLockKey) return;
-            try {
-                if (!editLockChannel && typeof window.BroadcastChannel === 'function') {
-                    editLockChannel = new BroadcastChannel(EDIT_LOCK_CHANNEL);
-                    editLockChannel.onmessage = (ev) => {
-                        const msg = ev && ev.data ? ev.data : null;
-                        if (!msg || msg.key !== editLockKey) return;
-                        if (msg.owner && msg.owner !== editSessionId && document.body.classList.contains('is-editing')) {
-                            handleLostEditLock(msg);
-                        }
-                    };
-                }
-                if (editLockChannel) {
-                    editLockChannel.postMessage({
-                        type,
-                        key: editLockKey,
-                        owner: editSessionId,
-                        ts: Date.now(),
-                        title: (document.title || '').slice(0, 120)
-                    });
-                }
-            } catch {}
-        }
+	        function announceEditLock(type) {
+	            if (!state.editLockKey) return;
+	            try {
+	                if (!state.editLockChannel && typeof window.BroadcastChannel === 'function') {
+	                    state.editLockChannel = new BroadcastChannel(EDIT_LOCK_CHANNEL);
+	                    state.editLockChannel.onmessage = (ev) => {
+	                        const msg = ev && ev.data ? ev.data : null;
+	                        if (!msg || msg.key !== state.editLockKey) return;
+	                        if (msg.owner && msg.owner !== editSessionId && document.body.classList.contains('is-editing')) {
+	                            handleLostEditLock(msg);
+	                        }
+	                    };
+	                }
+	                if (state.editLockChannel) {
+	                    state.editLockChannel.postMessage({
+	                        type,
+	                        key: state.editLockKey,
+	                        owner: editSessionId,
+	                        ts: Date.now(),
+	                        title: (document.title || '').slice(0, 120)
+	                    });
+	                }
+	            } catch {}
+	        }
 
-        function stopEditLockHeartbeat() {
-            if (editLockHeartbeat) {
-                clearInterval(editLockHeartbeat);
-                editLockHeartbeat = null;
-            }
-        }
+	        function stopEditLockHeartbeat() {
+	            if (state.editLockHeartbeat) {
+	                clearInterval(state.editLockHeartbeat);
+	                state.editLockHeartbeat = null;
+	            }
+	        }
 
-        function handleLostEditLock(lock) {
+	        function handleLostEditLock(lock) {
             stopEditLockHeartbeat();
             // Do not clear the lock; we aren't the owner anymore.
             if (document.body.classList.contains('is-editing')) {
                 setEditingMode(false);
-            }
-            const ownerTitle = lock && lock.title ? ` (“${lock.title}”)` : '';
-            statusEl.innerText = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
-        }
+	            }
+	            const ownerTitle = lock && lock.title ? ` (“${lock.title}”)` : '';
+	            els.status.innerText = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
+	        }
 
-        function startEditLockHeartbeat() {
-            if (editLockDisabled) return;
-            stopEditLockHeartbeat();
-            editLockHeartbeat = setInterval(() => {
-                if (!editLockKey) return;
-                const current = readEditLock(editLockKey);
-                if (current && current.owner && current.owner !== editSessionId && !isEditLockStale(current)) {
-                    handleLostEditLock(current);
-                    return;
-                }
-                writeEditLock(editLockKey, {
-                    owner: editSessionId,
-                    ts: Date.now(),
-                    title: (document.title || '').slice(0, 120)
-                });
-                announceEditLock('heartbeat');
-            }, EDIT_LOCK_HEARTBEAT_MS);
-        }
+	        function startEditLockHeartbeat() {
+	            if (state.editLockDisabled) return;
+	            stopEditLockHeartbeat();
+	            state.editLockHeartbeat = setInterval(() => {
+	                if (!state.editLockKey) return;
+	                const current = readEditLock(state.editLockKey);
+	                if (current && current.owner && current.owner !== editSessionId && !isEditLockStale(current)) {
+	                    handleLostEditLock(current);
+	                    return;
+	                }
+	                writeEditLock(state.editLockKey, {
+	                    owner: editSessionId,
+	                    ts: Date.now(),
+	                    title: (document.title || '').slice(0, 120)
+	                });
+	                announceEditLock('heartbeat');
+	            }, EDIT_LOCK_HEARTBEAT_MS);
+	        }
 
-        async function acquireEditLockForHandle(handle) {
-            editLockDisabled = false;
-            editLockKey = computeEditLockKey(handle);
-            if (editLockDisabled) {
-                editLockKey = null;
-                return true;
-            }
-            const existing = readEditLock(editLockKey);
-            if (existing && existing.owner && existing.owner !== editSessionId && !isEditLockStale(existing)) {
+	        async function acquireEditLockForHandle(handle) {
+	            state.editLockDisabled = false;
+	            state.editLockKey = computeEditLockKey(handle);
+	            if (state.editLockDisabled) {
+	                state.editLockKey = null;
+	                return true;
+	            }
+	            const existing = readEditLock(state.editLockKey);
+	            if (existing && existing.owner && existing.owner !== editSessionId && !isEditLockStale(existing)) {
                 const ownerTitle = existing.title ? `\n\nOther tab title: ${existing.title}` : '';
                 const proceed = window.confirm(
                     'This file looks like it is already in Editing mode in another tab.' +
                     '\n\nContinuing can cause you to overwrite changes.' +
                     ownerTitle +
                     '\n\nPress Cancel to keep this tab read-only.'
-                );
-                if (!proceed) {
-                    editLockKey = null;
-                    return false;
-                }
-            }
+	                );
+	                if (!proceed) {
+	                    state.editLockKey = null;
+	                    return false;
+	                }
+	            }
 
-            writeEditLock(editLockKey, {
-                owner: editSessionId,
-                ts: Date.now(),
-                title: (document.title || '').slice(0, 120)
-            });
-            if (editLockDisabled) {
-                editLockKey = null;
-                stopEditLockHeartbeat();
-                return true;
-            }
+	            writeEditLock(state.editLockKey, {
+	                owner: editSessionId,
+	                ts: Date.now(),
+	                title: (document.title || '').slice(0, 120)
+	            });
+	            if (state.editLockDisabled) {
+	                state.editLockKey = null;
+	                stopEditLockHeartbeat();
+	                return true;
+	            }
             startEditLockHeartbeat();
             announceEditLock('acquire');
             return true;
         }
 
-        function releaseEditLock() {
-            if (!editLockKey) return;
-            const current = readEditLock(editLockKey);
-            if (current && current.owner === editSessionId) {
-                clearEditLock(editLockKey);
-                announceEditLock('release');
-            }
-            stopEditLockHeartbeat();
-            editLockKey = null;
-        }
+	        function releaseEditLock() {
+	            if (!state.editLockKey) return;
+	            const current = readEditLock(state.editLockKey);
+	            if (current && current.owner === editSessionId) {
+	                clearEditLock(state.editLockKey);
+	                announceEditLock('release');
+	            }
+	            stopEditLockHeartbeat();
+	            state.editLockKey = null;
+	        }
 
-        function setEditingMode(isEditing) {
+	        function setEditingMode(isEditing) {
             document.body.classList.toggle('is-editing', isEditing);
             document.querySelectorAll(editableSelector).forEach((el) => {
                 el.setAttribute('contenteditable', isEditing ? 'true' : 'false');
             });
-            if (!isEditing) {
-                clearTimeout(saveTimeout);
-                pendingSave = false;
-            }
+	            if (!isEditing) {
+	                clearTimeout(state.saveTimeout);
+	                state.pendingSave = false;
+	            }
             const editBtn = document.getElementById('enable-edit-btn');
             if (editBtn) editBtn.innerText = isEditing ? 'Exit Editing' : 'Enable Editing';
             const resetBtn = document.getElementById('reset-btn');
             if (resetBtn) resetBtn.hidden = !isEditing;
-            statusEl.innerText = isEditing ? 'Editing Enabled - Auto-saving...' : 'Read-Only Mode';
-        }
+	            els.status.innerText = isEditing ? 'Editing Enabled - Auto-saving...' : 'Read-Only Mode';
+	        }
 
-        function setHighlightPanelOpen(isOpen) {
-            if (!highlightPanelEl || !highlightToggleBtnEl) return;
-            highlightPanelEl.hidden = !isOpen;
-            highlightToggleBtnEl.innerText = isOpen ? 'Hide Highlights' : 'Highlight Colors';
-        }
+	        function setHighlightPanelOpen(isOpen) {
+	            if (!els.highlightPanel || !els.highlightToggleBtn) return;
+	            els.highlightPanel.hidden = !isOpen;
+	            els.highlightToggleBtn.innerText = isOpen ? 'Hide Highlights' : 'Highlight Colors';
+	        }
 
         async function hydrateFromHandle(handle) {
             if (!handle) return false;
@@ -908,35 +914,35 @@
                 document.getElementById('app-root').innerHTML = parsedRoot.innerHTML;
                 removeLegacyContentDragHandles(document.getElementById('app-root'));
                 document.title = parsedTitle.innerText.trim() || 'Untitled Document';
-                fileHandle = handle;
-                generateTOC();
-                return true;
+	                state.fileHandle = handle;
+	                generateTOC();
+	                return true;
             } catch (err) {
                 console.error('Could not hydrate from saved file handle:', err);
                 return false;
             }
         }
 
-        function updateTocToggleLabel() {
-            const btn = document.getElementById('toc-level-btn');
-            if (!btn) return;
-            btn.innerText = tocIncludeEntries ? 'Hide Entries' : 'Show Entries';
-        }
+	        function updateTocToggleLabel() {
+	            const btn = document.getElementById('toc-level-btn');
+	            if (!btn) return;
+	            btn.innerText = state.tocIncludeEntries ? 'Hide Entries' : 'Show Entries';
+	        }
 
         function removeLegacyContentDragHandles(root = document) {
             if (!root) return;
             root.querySelectorAll('.drag-handle:not(.toc-drag-handle)').forEach((el) => el.remove());
         }
 
-        function openHelp() {
-            if (!helpModalEl) return;
-            helpModalEl.hidden = false;
-        }
+	        function openHelp() {
+	            if (!els.helpModal) return;
+	            els.helpModal.hidden = false;
+	        }
 
-        function closeHelp() {
-            if (!helpModalEl) return;
-            helpModalEl.hidden = true;
-        }
+	        function closeHelp() {
+	            if (!els.helpModal) return;
+	            els.helpModal.hidden = true;
+	        }
 
         function unwrapElement(el) {
             if (!el || !el.parentNode) return;
@@ -952,14 +958,14 @@
             root.normalize();
         }
 
-        function getSearchTerms() {
-            if (!entrySearchEl) return [];
-            return entrySearchEl.value
-                .trim()
-                .toLowerCase()
-                .split(/\s+/)
-                .filter(Boolean);
-        }
+	        function getSearchTerms() {
+	            if (!els.entrySearch) return [];
+	            return els.entrySearch.value
+	                .trim()
+	                .toLowerCase()
+	                .split(/\s+/)
+	                .filter(Boolean);
+	        }
 
         function escapeRegExp(text) {
             return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1047,52 +1053,52 @@
             });
         }
 
-        function clearEntrySearch() {
-            if (!entrySearchEl || entrySearchEl.value === '') return;
-            entrySearchEl.value = '';
-            applyEntrySearch();
-        }
+	        function clearEntrySearch() {
+	            if (!els.entrySearch || els.entrySearch.value === '') return;
+	            els.entrySearch.value = '';
+	            applyEntrySearch();
+	        }
 
         function getPageTitleText() {
             const titleText = document.getElementById('main-title').innerText.trim();
             return titleText || 'Untitled Document';
         }
 
-        function openResetModal() {
-            if (!fileHandle) {
-                statusEl.innerText = 'Enable Editing first to connect a file';
-                return;
-            }
+	        function openResetModal() {
+	            if (!state.fileHandle) {
+	                els.status.innerText = 'Enable Editing first to connect a file';
+	                return;
+	            }
 
             const requiredTitleEl = document.getElementById('reset-required-title');
             const confirmInputEl = document.getElementById('reset-confirm-input');
             const confirmBtnEl = document.getElementById('confirm-reset-btn');
-            resetExpectedTitle = getPageTitleText();
+	            state.resetExpectedTitle = getPageTitleText();
 
-            requiredTitleEl.innerText = resetExpectedTitle;
-            confirmInputEl.value = '';
-            confirmBtnEl.disabled = true;
-            resetModalEl.hidden = false;
-            confirmInputEl.focus();
-        }
+	            requiredTitleEl.innerText = state.resetExpectedTitle;
+	            confirmInputEl.value = '';
+	            confirmBtnEl.disabled = true;
+	            els.resetModal.hidden = false;
+	            confirmInputEl.focus();
+	        }
 
-        function closeResetModal() {
-            if (!resetModalEl) return;
-            resetModalEl.hidden = true;
-        }
+	        function closeResetModal() {
+	            if (!els.resetModal) return;
+	            els.resetModal.hidden = true;
+	        }
 
-        function updateResetConfirmState() {
-            const entered = document.getElementById('reset-confirm-input').value.trim();
-            document.getElementById('confirm-reset-btn').disabled = entered !== resetExpectedTitle;
-        }
+	        function updateResetConfirmState() {
+	            const entered = document.getElementById('reset-confirm-input').value.trim();
+	            document.getElementById('confirm-reset-btn').disabled = entered !== state.resetExpectedTitle;
+	        }
 
-        function resetDocumentNow() {
+	        function resetDocumentNow() {
             document.getElementById('main-title').innerText = 'Clippings Manager';
             document.title = 'Clippings Manager';
-            document.getElementById('app-root').innerHTML = '';
-            closeResetModal();
-            triggerUpdate();
-        }
+	            document.getElementById('app-root').innerHTML = '';
+	            closeResetModal();
+	            triggerStructureUpdate();
+	        }
 
         function insertFragmentAtCursor(fragment) {
             const selection = window.getSelection();
@@ -1127,28 +1133,28 @@
             return probe.style.backgroundColor || '';
         }
 
-        function readStoredHighlightPalette() {
-            try {
-                const raw = (highlightPaletteDataEl && highlightPaletteDataEl.textContent) || '';
-                const parsed = JSON.parse(raw);
-                if (!Array.isArray(parsed)) return [];
-                return parsed
-                    .map((value) => normalizeColorValue(value))
-                    .filter(Boolean);
+	        function readStoredHighlightPalette() {
+	            try {
+	                const raw = (els.highlightPaletteData && els.highlightPaletteData.textContent) || '';
+	                const parsed = JSON.parse(raw);
+	                if (!Array.isArray(parsed)) return [];
+	                return parsed
+	                    .map((value) => normalizeColorValue(value))
+	                    .filter(Boolean);
             } catch (err) {
                 console.warn('Could not parse highlight palette data:', err);
                 return [];
             }
         }
 
-        function persistHighlightPalette() {
-            if (highlightPaletteDataEl) {
-                highlightPaletteDataEl.textContent = JSON.stringify(highlightPalette);
-            }
-            localStorage.setItem('highlight-palette', JSON.stringify(highlightPalette));
-        }
+	        function persistHighlightPalette() {
+	            if (els.highlightPaletteData) {
+	                els.highlightPaletteData.textContent = JSON.stringify(state.highlightPalette);
+	            }
+	            localStorage.setItem('highlight-palette', JSON.stringify(state.highlightPalette));
+	        }
 
-        function createHighlightPopupSwatch(color) {
+	        function createHighlightPopupSwatch(color) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'highlight-popup-swatch';
@@ -1156,14 +1162,14 @@
             button.dataset.color = normalizeColorValue(color);
             button.title = `Apply ${color} highlight`;
             button.style.backgroundColor = color;
-            button.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                if (highlightTargetMark) {
-                    applyColorToActiveHighlight(color);
-                } else {
-                    applyHighlight(color);
-                }
-            });
+	            button.addEventListener('mousedown', (e) => {
+	                e.preventDefault();
+	                if (state.highlightTargetMark) {
+	                    applyColorToActiveHighlight(color);
+	                } else {
+	                    applyHighlight(color);
+	                }
+	            });
             return button;
         }
 
@@ -1179,35 +1185,35 @@
             return button;
         }
 
-        function renderHighlightPopup() {
-            if (!highlightPopupEl) return;
-            highlightPopupEl.replaceChildren();
+	        function renderHighlightPopup() {
+	            if (!els.highlightPopup) return;
+	            els.highlightPopup.replaceChildren();
 
-            if (highlightPalette.length === 0) {
-                const empty = document.createElement('p');
-                empty.className = 'highlight-popup-empty';
-                empty.textContent = 'Add a palette color first';
-                highlightPopupEl.appendChild(empty);
-                if (highlightTargetMark) {
-                    const deleteBtn = createHighlightPopupDelete();
-                    highlightPopupEl.appendChild(deleteBtn);
-                }
-                return;
-            }
+	            if (state.highlightPalette.length === 0) {
+	                const empty = document.createElement('p');
+	                empty.className = 'highlight-popup-empty';
+	                empty.textContent = 'Add a palette color first';
+	                els.highlightPopup.appendChild(empty);
+	                if (state.highlightTargetMark) {
+	                    const deleteBtn = createHighlightPopupDelete();
+	                    els.highlightPopup.appendChild(deleteBtn);
+	                }
+	                return;
+	            }
 
-            highlightPalette.forEach((color) => {
-                highlightPopupEl.appendChild(createHighlightPopupSwatch(color));
-            });
-            if (highlightTargetMark) {
-                const deleteBtn = createHighlightPopupDelete();
-                highlightPopupEl.appendChild(deleteBtn);
-            }
-        }
+	            state.highlightPalette.forEach((color) => {
+	                els.highlightPopup.appendChild(createHighlightPopupSwatch(color));
+	            });
+	            if (state.highlightTargetMark) {
+	                const deleteBtn = createHighlightPopupDelete();
+	                els.highlightPopup.appendChild(deleteBtn);
+	            }
+	        }
 
-        function positionHighlightPopupNear(rect) {
-            if (!highlightPopupEl || !rect) return;
+	        function positionHighlightPopupNear(rect) {
+	            if (!els.highlightPopup || !rect) return;
 
-            const popupRect = highlightPopupEl.getBoundingClientRect();
+	            const popupRect = els.highlightPopup.getBoundingClientRect();
             const targetWidth = rect.width || 0;
             const targetLeft = rect.left || 0;
             const popupTop = Math.min(window.innerHeight - popupRect.height - 12, rect.bottom + 10);
@@ -1219,51 +1225,51 @@
                 )
             );
 
-            highlightPopupEl.style.top = `${Math.max(12, popupTop)}px`;
-            highlightPopupEl.style.left = `${popupLeft}px`;
-        }
+	            els.highlightPopup.style.top = `${Math.max(12, popupTop)}px`;
+	            els.highlightPopup.style.left = `${popupLeft}px`;
+	        }
 
-        function showHighlightPopupForMark(mark) {
-            if (!mark || !highlightPopupEl) return;
-            highlightTargetMark = mark;
-            highlightSelectionRange = null;
-            renderHighlightPopup();
-            highlightPopupEl.hidden = false;
-            positionHighlightPopupNear(mark.getBoundingClientRect());
-        }
+	        function showHighlightPopupForMark(mark) {
+	            if (!mark || !els.highlightPopup) return;
+	            state.highlightTargetMark = mark;
+	            state.highlightSelectionRange = null;
+	            renderHighlightPopup();
+	            els.highlightPopup.hidden = false;
+	            positionHighlightPopupNear(mark.getBoundingClientRect());
+	        }
 
-        function applyColorToActiveHighlight(color) {
-            if (!highlightTargetMark) return;
-            const normalized = normalizeColorValue(color);
-            if (!normalized) return;
+	        function applyColorToActiveHighlight(color) {
+	            if (!state.highlightTargetMark) return;
+	            const normalized = normalizeColorValue(color);
+	            if (!normalized) return;
 
-            highlightTargetMark.style.backgroundColor = normalized;
-            highlightTargetMark.dataset.highlight = 'true';
-            highlightTargetMark.dataset.highlightColor = normalized;
-            const editor = highlightTargetMark.closest('.text');
-            triggerUpdate({ target: editor });
-            renderHighlightPopup();
-            positionHighlightPopupNear(highlightTargetMark.getBoundingClientRect());
-        }
+	            state.highlightTargetMark.style.backgroundColor = normalized;
+	            state.highlightTargetMark.dataset.highlight = 'true';
+	            state.highlightTargetMark.dataset.highlightColor = normalized;
+	            const editor = state.highlightTargetMark.closest('.text');
+	            triggerContentUpdate({ target: editor });
+	            renderHighlightPopup();
+	            positionHighlightPopupNear(state.highlightTargetMark.getBoundingClientRect());
+	        }
 
-        function deleteActiveHighlight() {
-            if (!highlightTargetMark) return;
-            const editor = highlightTargetMark.closest('.text');
-            unwrapElement(highlightTargetMark);
-            highlightTargetMark = null;
-            highlightSelectionRange = null;
-            hideHighlightPopup();
-            if (editor) {
-                triggerUpdate({ target: editor });
-            }
-        }
+	        function deleteActiveHighlight() {
+	            if (!state.highlightTargetMark) return;
+	            const editor = state.highlightTargetMark.closest('.text');
+	            unwrapElement(state.highlightTargetMark);
+	            state.highlightTargetMark = null;
+	            state.highlightSelectionRange = null;
+	            hideHighlightPopup();
+	            if (editor) {
+	                triggerContentUpdate({ target: editor });
+	            }
+	        }
 
-        function renderHighlightPaletteEditor() {
+	        function renderHighlightPaletteEditor() {
             const list = document.getElementById('highlight-palette-list');
             if (!list) return;
 
-            list.replaceChildren();
-            highlightPalette.forEach((color, index) => {
+	            list.replaceChildren();
+	            state.highlightPalette.forEach((color, index) => {
                 const row = document.createElement('div');
                 row.className = 'palette-row';
 
@@ -1273,15 +1279,15 @@
                 input.setAttribute('data-testid', 'palette-color-input');
                 input.value = color;
                 input.setAttribute('value', color);
-                input.setAttribute('aria-label', `Highlight color ${index + 1}`);
-                input.addEventListener('input', (e) => {
-                    const nextColor = normalizeColorValue(e.target.value) || defaultHighlightPalette[0];
-                    highlightPalette[index] = nextColor;
-                    input.setAttribute('value', nextColor);
-                    preview.style.backgroundColor = nextColor;
-                    persistHighlightPalette();
-                    renderHighlightPopup();
-                });
+	                input.setAttribute('aria-label', `Highlight color ${index + 1}`);
+	                input.addEventListener('input', (e) => {
+	                    const nextColor = normalizeColorValue(e.target.value) || defaultHighlightPalette[0];
+	                    state.highlightPalette[index] = nextColor;
+	                    input.setAttribute('value', nextColor);
+	                    preview.style.backgroundColor = nextColor;
+	                    persistHighlightPalette();
+	                    renderHighlightPopup();
+	                });
 
                 const preview = document.createElement('div');
                 preview.className = 'palette-preview';
@@ -1292,15 +1298,15 @@
                 removeBtn.className = 'palette-remove-btn';
                 removeBtn.setAttribute('data-testid', 'palette-remove-btn');
                 removeBtn.textContent = 'Remove';
-                removeBtn.disabled = highlightPalette.length <= 1;
-                removeBtn.addEventListener('click', () => {
-                    if (highlightPalette.length <= 1) return;
-                    highlightPalette.splice(index, 1);
-                    persistHighlightPalette();
-                    renderHighlightPaletteEditor();
-                    renderHighlightPopup();
-                    refreshHighlightPopup();
-                });
+	                removeBtn.disabled = state.highlightPalette.length <= 1;
+	                removeBtn.addEventListener('click', () => {
+	                    if (state.highlightPalette.length <= 1) return;
+	                    state.highlightPalette.splice(index, 1);
+	                    persistHighlightPalette();
+	                    renderHighlightPaletteEditor();
+	                    renderHighlightPopup();
+	                    refreshHighlightPopup();
+	                });
 
                 row.append(input, preview, removeBtn);
                 list.appendChild(row);
@@ -1324,18 +1330,18 @@
                 palette = [...defaultHighlightPalette];
             }
 
-            highlightPalette = palette;
-            persistHighlightPalette();
-            renderHighlightPaletteEditor();
-            renderHighlightPopup();
-        }
+	            state.highlightPalette = palette;
+	            persistHighlightPalette();
+	            renderHighlightPaletteEditor();
+	            renderHighlightPopup();
+	        }
 
-        function hideHighlightPopup() {
-            if (!highlightPopupEl) return;
-            highlightPopupEl.hidden = true;
-            highlightSelectionRange = null;
-            highlightTargetMark = null;
-        }
+	        function hideHighlightPopup() {
+	            if (!els.highlightPopup) return;
+	            els.highlightPopup.hidden = true;
+	            state.highlightSelectionRange = null;
+	            state.highlightTargetMark = null;
+	        }
 
         function getClosestElement(node) {
             if (!node) return null;
@@ -1351,50 +1357,50 @@
             return anchorEditor;
         }
 
-        function refreshHighlightPopup() {
-            const selection = window.getSelection();
-            if (highlightTargetMark) {
-                if (selection && selection.rangeCount > 0 && selection.getRangeAt(0).intersectsNode(highlightTargetMark)) {
-                    return;
-                }
-                highlightTargetMark = null;
-            }
-            if (!document.body.classList.contains('is-editing')) {
-                highlightSelectionRange = null;
-                hideHighlightPopup();
-                return;
-            }
+	        function refreshHighlightPopup() {
+	            const selection = window.getSelection();
+	            if (state.highlightTargetMark) {
+	                if (selection && selection.rangeCount > 0 && selection.getRangeAt(0).intersectsNode(state.highlightTargetMark)) {
+	                    return;
+	                }
+	                state.highlightTargetMark = null;
+	            }
+	            if (!document.body.classList.contains('is-editing')) {
+	                state.highlightSelectionRange = null;
+	                hideHighlightPopup();
+	                return;
+	            }
 
-            const editor = getSelectionTextEditor(selection);
-            if (!editor) {
-                highlightSelectionRange = null;
-                hideHighlightPopup();
-                return;
-            }
+	            const editor = getSelectionTextEditor(selection);
+	            if (!editor) {
+	                state.highlightSelectionRange = null;
+	                hideHighlightPopup();
+	                return;
+	            }
 
             const range = selection.getRangeAt(0);
-            const rect = range.getBoundingClientRect();
-            if (!rect || (!rect.width && !rect.height)) {
-                highlightSelectionRange = null;
-                hideHighlightPopup();
-                return;
-            }
+	            const rect = range.getBoundingClientRect();
+	            if (!rect || (!rect.width && !rect.height)) {
+	                state.highlightSelectionRange = null;
+	                hideHighlightPopup();
+	                return;
+	            }
 
-            highlightSelectionRange = range.cloneRange();
-            renderHighlightPopup();
-            highlightPopupEl.hidden = false;
-            positionHighlightPopupNear(rect);
-        }
+	            state.highlightSelectionRange = range.cloneRange();
+	            renderHighlightPopup();
+	            els.highlightPopup.hidden = false;
+	            positionHighlightPopupNear(rect);
+	        }
 
-        function applyHighlight(color) {
-            if (!highlightSelectionRange || highlightSelectionRange.collapsed) return;
+	        function applyHighlight(color) {
+	            if (!state.highlightSelectionRange || state.highlightSelectionRange.collapsed) return;
 
-            highlightTargetMark = null;
-            const editor = getClosestElement(highlightSelectionRange.commonAncestorContainer)?.closest('.text');
-            if (!editor) return;
+	            state.highlightTargetMark = null;
+	            const editor = getClosestElement(state.highlightSelectionRange.commonAncestorContainer)?.closest('.text');
+	            if (!editor) return;
 
-            const range = highlightSelectionRange.cloneRange();
-            const fragment = range.extractContents();
+	            const range = state.highlightSelectionRange.cloneRange();
+	            const fragment = range.extractContents();
             if (!fragment.textContent || !fragment.textContent.trim()) {
                 hideHighlightPopup();
                 return;
@@ -1411,13 +1417,13 @@
             const selection = window.getSelection();
             if (selection) {
                 const postRange = document.createRange();
-                postRange.selectNodeContents(mark);
-                selection.removeAllRanges();
-                selection.addRange(postRange);
-                highlightSelectionRange = postRange.cloneRange();
-            }
+	                postRange.selectNodeContents(mark);
+	                selection.removeAllRanges();
+	                selection.addRange(postRange);
+	                state.highlightSelectionRange = postRange.cloneRange();
+	            }
 
-            triggerUpdate({ target: editor });
+	            triggerContentUpdate({ target: editor });
             refreshHighlightPopup();
         }
 
@@ -1513,13 +1519,13 @@
             });
         }
 
-        function saveNow() {
-            clearTimeout(saveTimeout);
-            autoTitle();
-            generateTOC();
-            statusEl.innerText = 'Saving...';
-            saveToDisk();
-        }
+	        function saveNow() {
+	            clearTimeout(state.saveTimeout);
+	            autoTitle();
+	            generateTOC();
+	            els.status.innerText = 'Saving...';
+	            saveToDisk();
+	        }
 
         function focusEditableAtEnd(el) {
             if (!el) return;
@@ -1534,30 +1540,30 @@
             selection.addRange(range);
         }
 
-	        function bindEditingListeners() {
-	            if (listenersBound) return;
-	            listenersBound = true;
+		        function bindEditingListeners() {
+		            if (state.listenersBound) return;
+		            state.listenersBound = true;
 
-            document.getElementById('app-root').addEventListener('input', triggerUpdate);
-            document.getElementById('app-root').addEventListener('keyup', (e) => {
-                if (isSubsectionOrSectionTarget(e.target)) {
-                    triggerUpdate(e);
-                }
-            });
-            document.getElementById('main-title').addEventListener('input', (e) => {
-                document.title = e.target.innerText || 'Untitled Document';
-                triggerUpdate(e);
-            });
-            document.getElementById('help-btn').addEventListener('click', openHelp);
-            if (highlightToggleBtnEl) {
-                highlightToggleBtnEl.addEventListener('click', () => {
-                    setHighlightPanelOpen(highlightPanelEl.hidden);
-                });
-            }
-            document.getElementById('close-help-btn').addEventListener('click', closeHelp);
-            helpModalEl.addEventListener('click', (e) => {
-                if (e.target === helpModalEl) closeHelp();
-            });
+	            document.getElementById('app-root').addEventListener('input', triggerContentUpdate);
+	            document.getElementById('app-root').addEventListener('keyup', (e) => {
+	                if (isSubsectionOrSectionTarget(e.target)) {
+	                    triggerContentUpdate(e);
+	                }
+	            });
+	            document.getElementById('main-title').addEventListener('input', (e) => {
+	                document.title = e.target.innerText || 'Untitled Document';
+	                triggerContentUpdate(e);
+	            });
+	            document.getElementById('help-btn').addEventListener('click', openHelp);
+	            if (els.highlightToggleBtn) {
+	                els.highlightToggleBtn.addEventListener('click', () => {
+	                    setHighlightPanelOpen(els.highlightPanel.hidden);
+	                });
+	            }
+	            document.getElementById('close-help-btn').addEventListener('click', closeHelp);
+	            els.helpModal.addEventListener('click', (e) => {
+	                if (e.target === els.helpModal) closeHelp();
+	            });
             document.getElementById('reset-btn').addEventListener('click', openResetModal);
             document.getElementById('cancel-reset-btn').addEventListener('click', closeResetModal);
             document.getElementById('confirm-reset-btn').addEventListener('click', resetDocumentNow);
@@ -1569,29 +1575,29 @@
                     resetDocumentNow();
                 }
             });
-            resetModalEl.addEventListener('click', (e) => {
-                if (e.target === resetModalEl) closeResetModal();
-            });
-            document.getElementById('toc-level-btn').addEventListener('click', () => {
-                tocIncludeEntries = !tocIncludeEntries;
-                localStorage.setItem('toc-include-entries', tocIncludeEntries ? '1' : '0');
-                updateTocToggleLabel();
-                generateTOC();
-            });
-            if (entrySearchEl) {
-                entrySearchEl.addEventListener('input', applyEntrySearch);
-                entrySearchEl.addEventListener('keydown', (e) => {
-                    if (e.key !== 'Escape') return;
-                    e.preventDefault();
-                    clearEntrySearch();
-                });
-            }
-            document.getElementById('add-highlight-color-btn').addEventListener('click', () => {
-                highlightPalette.push(defaultHighlightPalette[highlightPalette.length % defaultHighlightPalette.length]);
-                persistHighlightPalette();
-                renderHighlightPaletteEditor();
-                renderHighlightPopup();
-            });
+	            els.resetModal.addEventListener('click', (e) => {
+	                if (e.target === els.resetModal) closeResetModal();
+	            });
+	            document.getElementById('toc-level-btn').addEventListener('click', () => {
+	                state.tocIncludeEntries = !state.tocIncludeEntries;
+	                localStorage.setItem('toc-include-entries', state.tocIncludeEntries ? '1' : '0');
+	                updateTocToggleLabel();
+	                generateTOC();
+	            });
+	            if (els.entrySearch) {
+	                els.entrySearch.addEventListener('input', applyEntrySearch);
+	                els.entrySearch.addEventListener('keydown', (e) => {
+	                    if (e.key !== 'Escape') return;
+	                    e.preventDefault();
+	                    clearEntrySearch();
+	                });
+	            }
+	            document.getElementById('add-highlight-color-btn').addEventListener('click', () => {
+	                state.highlightPalette.push(defaultHighlightPalette[state.highlightPalette.length % defaultHighlightPalette.length]);
+	                persistHighlightPalette();
+	                renderHighlightPaletteEditor();
+	                renderHighlightPopup();
+	            });
 
             // Force rich paste/drop content into plain text to prevent structural HTML injection.
             document.addEventListener('paste', (e) => {
@@ -1612,12 +1618,12 @@
                     const text = (e.clipboardData || window.clipboardData).getData('text/plain');
                     insertPlainText(text);
                 }
-                triggerUpdate({ target: editableTarget });
+	                triggerContentUpdate({ target: editableTarget });
             });
 
-	            document.addEventListener('drop', (e) => {
-	                if (!document.body.classList.contains('is-editing')) return;
-	                if (tocDragState) return; // preserve TOC drag-and-drop behavior
+		            document.addEventListener('drop', (e) => {
+		                if (!document.body.classList.contains('is-editing')) return;
+		                if (state.tocDragState) return; // preserve TOC drag-and-drop behavior
 
 	                const editableTarget = e.target.closest('[contenteditable="true"]');
 	                if (!editableTarget) return;
@@ -1636,20 +1642,20 @@
                     const text = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || '';
                     insertPlainText(text);
                 }
-                triggerUpdate({ target: editableTarget });
+	                triggerContentUpdate({ target: editableTarget });
             });
 
-            document.addEventListener('keydown', (e) => {
-                if (!helpModalEl.hidden && e.key === 'Escape') {
-                    e.preventDefault();
-                    closeHelp();
-                    return;
-                }
-                if (!resetModalEl.hidden && e.key === 'Escape') {
-                    e.preventDefault();
-                    closeResetModal();
-                    return;
-                }
+	            document.addEventListener('keydown', (e) => {
+	                if (!els.helpModal.hidden && e.key === 'Escape') {
+	                    e.preventDefault();
+	                    closeHelp();
+	                    return;
+	                }
+	                if (!els.resetModal.hidden && e.key === 'Escape') {
+	                    e.preventDefault();
+	                    closeResetModal();
+	                    return;
+	                }
 
                 if (!document.body.classList.contains('is-editing')) return;
                 const editableTarget = e.target.closest('[contenteditable="true"]');
@@ -1658,19 +1664,19 @@
                 const isMod = e.ctrlKey || e.metaKey;
                 if (isMod && !e.shiftKey && !e.altKey) {
                     const key = e.key.toLowerCase();
-                    if (key === 's') {
-                        e.preventDefault();
-                        if (!fileHandle) return;
-                        saveNow();
-                        return;
-                    }
+	                    if (key === 's') {
+	                        e.preventDefault();
+	                        if (!state.fileHandle) return;
+	                        saveNow();
+	                        return;
+	                    }
 
                     if (key === 'b' || key === 'i') {
                         e.preventDefault();
                         if (!isTextEditorTarget(editableTarget)) return;
 
                         document.execCommand(key === 'b' ? 'bold' : 'italic', false, null);
-                        triggerUpdate({ target: editableTarget });
+	                        triggerContentUpdate({ target: editableTarget });
                         return;
                     }
                 }
@@ -1678,42 +1684,42 @@
                 if (e.key === 'Enter' && isTextEditorTarget(editableTarget)) {
                     e.preventDefault();
                     insertFragmentAtCursor(document.createElement('br'));
-                    triggerUpdate({ target: editableTarget });
+	                    triggerContentUpdate({ target: editableTarget });
                     return;
                 }
 
                 if (e.key === 'Enter' && isSubsectionOrSectionTarget(editableTarget)) {
                     e.preventDefault();
                     editableTarget.blur();
-                    triggerUpdate({ target: editableTarget });
+	                    triggerContentUpdate({ target: editableTarget });
                 }
             });
             document.addEventListener('selectionchange', () => {
                 window.requestAnimationFrame(refreshHighlightPopup);
             });
             document.addEventListener('scroll', hideHighlightPopup, true);
-            window.addEventListener('resize', refreshHighlightPopup);
-            document.addEventListener('mousedown', (e) => {
-                if (highlightPopupEl && highlightPopupEl.contains(e.target)) return;
-                if (e.target.closest('#highlight-panel')) return;
-                if (e.target.closest('#highlight-toggle-btn')) return;
-                const mark = e.target.closest('.highlight-mark');
-                if (mark && document.body.classList.contains('is-editing')) {
-                    highlightTargetMark = mark;
-                    return;
-                }
-                if (!e.target.closest('.text')) {
-                    highlightSelectionRange = null;
-                    hideHighlightPopup();
-                }
-            });
-            document.addEventListener('click', (e) => {
-                if (!document.body.classList.contains('is-editing')) return;
-                if (highlightPopupEl && highlightPopupEl.contains(e.target)) return;
-                const mark = e.target.closest('.highlight-mark');
-                if (!mark) return;
-                showHighlightPopupForMark(mark);
-            });
+	            window.addEventListener('resize', refreshHighlightPopup);
+	            document.addEventListener('mousedown', (e) => {
+	                if (els.highlightPopup && els.highlightPopup.contains(e.target)) return;
+	                if (e.target.closest('#highlight-panel')) return;
+	                if (e.target.closest('#highlight-toggle-btn')) return;
+	                const mark = e.target.closest('.highlight-mark');
+	                if (mark && document.body.classList.contains('is-editing')) {
+	                    state.highlightTargetMark = mark;
+	                    return;
+	                }
+	                if (!e.target.closest('.text')) {
+	                    state.highlightSelectionRange = null;
+	                    hideHighlightPopup();
+	                }
+	            });
+	            document.addEventListener('click', (e) => {
+	                if (!document.body.classList.contains('is-editing')) return;
+	                if (els.highlightPopup && els.highlightPopup.contains(e.target)) return;
+	                const mark = e.target.closest('.highlight-mark');
+	                if (!mark) return;
+	                showHighlightPopupForMark(mark);
+	            });
         }
 
         function buildSavableHtml() {
@@ -1757,41 +1763,41 @@
             return "<!DOCTYPE html>\n" + snapshot.outerHTML;
         }
 
-        // SELF-HEALING: Force reset to read-only mode on every page load
-        window.addEventListener('DOMContentLoaded', async () => {
-            tocIncludeEntries = localStorage.getItem('toc-include-entries') === '1';
-            updateTocToggleLabel();
-            initializeHighlightPalette();
-            setHighlightPanelOpen(false);
-            setEditingMode(false);
-            const supportsFileSystemAccess = typeof window.showOpenFilePicker === 'function';
-            if (!supportsFileSystemAccess) {
-                isUnsupportedBrowser = true;
-                statusEl.innerText = 'Use a Chromium-based browser for editing/saving';
-                const editBtn = document.getElementById('enable-edit-btn');
-                if (editBtn) {
-                    editBtn.hidden = true;
-                }
+	        // SELF-HEALING: Force reset to read-only mode on every page load
+	        window.addEventListener('DOMContentLoaded', async () => {
+	            state.tocIncludeEntries = localStorage.getItem('toc-include-entries') === '1';
+	            updateTocToggleLabel();
+	            initializeHighlightPalette();
+	            setHighlightPanelOpen(false);
+	            setEditingMode(false);
+	            const supportsFileSystemAccess = typeof window.showOpenFilePicker === 'function';
+	            if (!supportsFileSystemAccess) {
+	                state.isUnsupportedBrowser = true;
+	                els.status.innerText = 'Use a Chromium-based browser for editing/saving';
+	                const editBtn = document.getElementById('enable-edit-btn');
+	                if (editBtn) {
+	                    editBtn.hidden = true;
+	                }
                 const resetBtn = document.getElementById('reset-btn');
                 if (resetBtn) {
                     resetBtn.hidden = true;
                 }
                 const helpBtn = document.getElementById('help-btn');
-                if (helpBtn) {
-                    helpBtn.hidden = true;
-                }
-                if (highlightToggleBtnEl) {
-                    highlightToggleBtnEl.hidden = true;
-                }
-                if (highlightPanelEl) {
-                    highlightPanelEl.hidden = true;
-                }
-            }
+	                if (helpBtn) {
+	                    helpBtn.hidden = true;
+	                }
+	                if (els.highlightToggleBtn) {
+	                    els.highlightToggleBtn.hidden = true;
+	                }
+	                if (els.highlightPanel) {
+	                    els.highlightPanel.hidden = true;
+	                }
+	            }
             
-            // Clean up any lingering inline styles that might have gotten saved previously
-            const btn = document.getElementById('enable-edit-btn');
-            if (btn && !isUnsupportedBrowser) btn.removeAttribute('style');
-            removeLegacyContentDragHandles(document.getElementById('app-root'));
+	            // Clean up any lingering inline styles that might have gotten saved previously
+	            const btn = document.getElementById('enable-edit-btn');
+	            if (btn && !state.isUnsupportedBrowser) btn.removeAttribute('style');
+	            removeLegacyContentDragHandles(document.getElementById('app-root'));
             
             bindEditingListeners();
             generateTOC();
@@ -1801,24 +1807,24 @@
             try {
                 if (window.location && window.location.protocol === 'file:') {
                     const key = computeEditLockKey(null);
-                    const existing = readEditLock(key);
-                    if (existing && existing.owner && existing.owner !== editSessionId && !isEditLockStale(existing)) {
-                        const ownerTitle = existing.title ? ` (“${existing.title}”)` : '';
-                        statusEl.innerText = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
-                    }
-                }
-            } catch {}
-        });
+	                    const existing = readEditLock(key);
+	                    if (existing && existing.owner && existing.owner !== editSessionId && !isEditLockStale(existing)) {
+	                        const ownerTitle = existing.title ? ` (“${existing.title}”)` : '';
+	                        els.status.innerText = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
+	                    }
+	                }
+	            } catch {}
+	        });
 
-        window.addEventListener('storage', (e) => {
-            if (!editLockKey) return;
-            if (!e || e.key !== (EDIT_LOCK_PREFIX + editLockKey)) return;
-            const next = e.newValue ? safeParseJson(e.newValue) : null;
-            if (!next || !next.owner) return;
-            if (next.owner !== editSessionId && !isEditLockStale(next) && document.body.classList.contains('is-editing')) {
-                handleLostEditLock(next);
-            }
-        });
+	        window.addEventListener('storage', (e) => {
+	            if (!state.editLockKey) return;
+	            if (!e || e.key !== (EDIT_LOCK_PREFIX + state.editLockKey)) return;
+	            const next = e.newValue ? safeParseJson(e.newValue) : null;
+	            if (!next || !next.owner) return;
+	            if (next.owner !== editSessionId && !isEditLockStale(next) && document.body.classList.contains('is-editing')) {
+	                handleLostEditLock(next);
+	            }
+	        });
 
         window.addEventListener('beforeunload', () => {
             try { releaseEditLock(); } catch {}
@@ -1831,18 +1837,18 @@
                 return;
             }
 
-            try {
-                if (!fileHandle) {
-                    const pickerOptions = {
-                        id: 'clippings-open-file',
-                        types: [{ description: 'HTML File', accept: {'text/html': ['.html']} }],
-                        multiple: false
-                    };
-                    [fileHandle] = await window.showOpenFilePicker(pickerOptions);
-                }
+	            try {
+	                if (!state.fileHandle) {
+	                    const pickerOptions = {
+	                        id: 'clippings-open-file',
+	                        types: [{ description: 'HTML File', accept: {'text/html': ['.html']} }],
+	                        multiple: false
+	                    };
+	                    [state.fileHandle] = await window.showOpenFilePicker(pickerOptions);
+	                }
 
-                const lockOk = await acquireEditLockForHandle(fileHandle);
-                if (!lockOk) return;
+	                const lockOk = await acquireEditLockForHandle(state.fileHandle);
+	                if (!lockOk) return;
 
                 setEditingMode(true);
 
@@ -1852,65 +1858,86 @@
             }
         });
 
-        function triggerUpdate(e) {
-            if (e && e.target && e.target.classList.contains('entry-title')) {
-                e.target.dataset.auto = "false";
-            }
-            
-            autoTitle();
-            generateTOC();
-            applyEntrySearch();
-            
-            clearTimeout(saveTimeout);
-            statusEl.innerText = 'Saving...';
-            saveTimeout = setTimeout(saveToDisk, 500); 
-        }
+	        function scheduleAutosave() {
+	            clearTimeout(state.saveTimeout);
+	            els.status.innerText = 'Saving...';
+	            state.saveTimeout = setTimeout(saveToDisk, 500);
+	        }
 
-        function showToast() {
+	        function isTocTitleTarget(node) {
+	            return !!(node && node.classList && (
+	                node.classList.contains('section-title') ||
+	                node.classList.contains('subsection-title') ||
+	                node.classList.contains('entry-title')
+	            ));
+	        }
+
+	        function triggerContentUpdate(e) {
+	            if (e && e.target && e.target.classList && e.target.classList.contains('entry-title')) {
+	                e.target.dataset.auto = 'false';
+	            }
+
+	            const autoChanged = autoTitle();
+	            if (isTocTitleTarget(e && e.target) || (state.tocIncludeEntries && autoChanged)) {
+	                generateTOC();
+	            }
+	            applyEntrySearch();
+	            scheduleAutosave();
+	        }
+
+	        function triggerStructureUpdate() {
+	            autoTitle();
+	            generateTOC();
+	            applyEntrySearch();
+	            scheduleAutosave();
+	        }
+
+	        function showToast() {
             const toast = document.getElementById('toast');
             toast.classList.add('show');
             setTimeout(() => toast.classList.remove('show'), 2000);
-            statusEl.innerText = 'Editing Enabled - Auto-saving...';
-        }
+	            els.status.innerText = 'Editing Enabled - Auto-saving...';
+	        }
 
-        async function saveToDisk() {
-            if (!fileHandle) return;
-            if (!document.body.classList.contains('is-editing')) return;
-            if (!hasEditLock()) {
-                statusEl.innerText = 'Save blocked: another tab is editing this file';
-                return;
-            }
-            if (saveInProgress) {
-                pendingSave = true;
-                return;
-            }
+	        async function saveToDisk() {
+	            if (!state.fileHandle) return;
+	            if (!document.body.classList.contains('is-editing')) return;
+	            if (!hasEditLock()) {
+	                els.status.innerText = 'Save blocked: another tab is editing this file';
+	                return;
+	            }
+	            if (state.saveInProgress) {
+	                state.pendingSave = true;
+	                return;
+	            }
 
-            saveInProgress = true;
-            try {
-                const htmlContent = buildSavableHtml();
+	            state.saveInProgress = true;
+	            try {
+	                const htmlContent = buildSavableHtml();
 
-                const writable = await fileHandle.createWritable();
-                await writable.write(htmlContent);
-                await writable.close();
+	                const writable = await state.fileHandle.createWritable();
+	                await writable.write(htmlContent);
+	                await writable.close();
                 
-                showToast();
-            } catch (err) {
-                statusEl.innerText = 'Error saving!';
-                console.error("Save failed:", err);
-            } finally {
-                saveInProgress = false;
-                if (pendingSave) {
-                    pendingSave = false;
-                    saveToDisk();
-                }
-            }
-        }
+	                showToast();
+	            } catch (err) {
+	                els.status.innerText = 'Error saving!';
+	                console.error("Save failed:", err);
+	            } finally {
+	                state.saveInProgress = false;
+	                if (state.pendingSave) {
+	                    state.pendingSave = false;
+	                    saveToDisk();
+	                }
+	            }
+	        }
 
-        function autoTitle() {
-            document.querySelectorAll('.entry').forEach(entry => {
-                const titleEl = entry.querySelector('.entry-title');
-                const sourceText = entry.querySelector('.source').innerText.trim();
-                const bodyText = entry.querySelector('.text').innerText.trim();
+	        function autoTitle() {
+	            let changed = false;
+	            document.querySelectorAll('.entry').forEach(entry => {
+	                const titleEl = entry.querySelector('.entry-title');
+	                const sourceText = entry.querySelector('.source').innerText.trim();
+	                const bodyText = entry.querySelector('.text').innerText.trim();
 
                 const words = bodyText.split(/\s+/).slice(0, 4).join(' ');
                 const generatedTitle = `${sourceText ? sourceText + ' - ' : ''}${words}${words.length > 0 ? '...' : ''}`;
@@ -1919,45 +1946,61 @@
                     titleEl.dataset.auto = "true";
                 }
 
-                if (titleEl.dataset.auto === "true" || !titleEl.hasAttribute('data-auto')) {
-                    if (generatedTitle.length > 3 && document.activeElement !== titleEl) {
-                        titleEl.innerText = generatedTitle;
-                        titleEl.dataset.auto = "true";
-                    }
-                }
-            });
-        }
+	                if (titleEl.dataset.auto === "true" || !titleEl.hasAttribute('data-auto')) {
+	                    if (generatedTitle.length > 3 && document.activeElement !== titleEl) {
+	                        titleEl.innerText = generatedTitle;
+	                        titleEl.dataset.auto = "true";
+	                        changed = true;
+	                    }
+	                }
+	            });
+	            return changed;
+	        }
 
         function getDirectChildItems(parent, selector) {
             return Array.from(parent.children).filter((child) => child.matches(selector));
         }
 
-        function createTocDragHandle() {
-            const handle = document.createElement('span');
-            handle.className = 'drag-handle toc-drag-handle';
-            handle.setAttribute('data-testid', 'toc-drag-handle');
-            handle.draggable = true;
-            handle.textContent = '⋮⋮';
-            handle.title = 'Drag to reorder';
-            handle.setAttribute('aria-label', 'Drag to reorder');
-            return handle;
-        }
+	        function createTocDragHandle() {
+	            const handle = document.createElement('span');
+	            handle.className = 'drag-handle toc-drag-handle';
+	            handle.setAttribute('data-testid', 'toc-drag-handle');
+	            handle.draggable = true;
+	            handle.textContent = '⋮⋮';
+	            handle.title = 'Drag to reorder';
+	            handle.setAttribute('aria-label', 'Drag to reorder');
+	            return handle;
+	        }
 
-        function appendEntriesToToc(parentItem, entryNodes, idPrefix, parentTargetId) {
-            if (!tocIncludeEntries || entryNodes.length === 0) return;
+	        function createStableDomId(prefix) {
+	            const base = (window.crypto && typeof window.crypto.randomUUID === 'function')
+	                ? window.crypto.randomUUID()
+	                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+	            return `${prefix}-${base}`;
+	        }
 
-            const entryList = document.createElement('ul');
-            entryNodes.forEach((entry, eIdx) => {
-                entry.id = `${idPrefix}-${eIdx}`;
-                const rawTitle = entry.querySelector('.entry-title') ? entry.querySelector('.entry-title').innerText : '';
-                const entryTitle = rawTitle.trim() || 'Untitled Entry';
+	        function ensureDomId(el, prefix) {
+	            if (!el) return '';
+	            if (el.id && el.id.trim()) return el.id;
+	            el.id = createStableDomId(prefix);
+	            return el.id;
+	        }
 
-                const entryItem = document.createElement('li');
-                entryItem.classList.add('draggable');
-                entryItem.setAttribute('data-testid', 'toc-item');
-                entryItem.dataset.tocType = 'entry';
-                entryItem.dataset.targetId = entry.id;
-                entryItem.dataset.parentId = parentTargetId || '';
+	        function appendEntriesToToc(parentItem, entryNodes, parentTargetId) {
+	            if (!state.tocIncludeEntries || entryNodes.length === 0) return;
+
+	            const entryList = document.createElement('ul');
+	            entryNodes.forEach((entry) => {
+	                ensureDomId(entry, 'entry');
+	                const rawTitle = entry.querySelector('.entry-title') ? entry.querySelector('.entry-title').innerText : '';
+	                const entryTitle = rawTitle.trim() || 'Untitled Entry';
+
+	                const entryItem = document.createElement('li');
+	                entryItem.classList.add('draggable');
+	                entryItem.setAttribute('data-testid', 'toc-item');
+	                entryItem.dataset.tocType = 'entry';
+	                entryItem.dataset.targetId = entry.id;
+	                entryItem.dataset.parentId = parentTargetId || '';
 
                 const entryRow = document.createElement('span');
                 entryRow.className = 'toc-row';
@@ -1973,18 +2016,18 @@
             parentItem.appendChild(entryList);
         }
 
-        function generateTOC() {
-            const toc = document.getElementById('toc');
-            const topList = document.createElement('ul');
+	        function generateTOC() {
+	            const toc = document.getElementById('toc');
+	            const topList = document.createElement('ul');
 
-            document.querySelectorAll('.section').forEach((sec, sIdx) => {
-                const sTitle = sec.querySelector('.section-title').innerText || 'Untitled Section';
-                sec.id = `sec-${sIdx}`;
+	            document.querySelectorAll('.section').forEach((sec) => {
+	                const sTitle = sec.querySelector('.section-title').innerText || 'Untitled Section';
+	                ensureDomId(sec, 'sec');
 
-                const secItem = document.createElement('li');
-                secItem.classList.add('draggable');
-                secItem.setAttribute('data-testid', 'toc-item');
-                secItem.dataset.tocType = 'section';
+	                const secItem = document.createElement('li');
+	                secItem.classList.add('draggable');
+	                secItem.setAttribute('data-testid', 'toc-item');
+	                secItem.dataset.tocType = 'section';
                 secItem.dataset.targetId = sec.id;
                 secItem.dataset.parentId = 'app-root';
 
@@ -1999,18 +2042,16 @@
                 secRow.appendChild(secStrong);
                 secItem.appendChild(secRow);
 
-                const sectionChildren = document.createElement('ul');
-                let subIdx = 0;
-                let directEntryIdx = 0;
+	                const sectionChildren = document.createElement('ul');
 
-                Array.from(sec.children).forEach((child) => {
-                    if (child.matches('.subsection-group')) {
-                        const subsecTitle = child.querySelector('.subsection-title').innerText || 'Untitled Subsection';
-                        child.id = `subsec-${sIdx}-${subIdx}`;
+	                Array.from(sec.children).forEach((child) => {
+	                    if (child.matches('.subsection-group')) {
+	                        const subsecTitle = child.querySelector('.subsection-title').innerText || 'Untitled Subsection';
+	                        ensureDomId(child, 'subsec');
 
-                        const subsecItem = document.createElement('li');
-                        subsecItem.classList.add('draggable');
-                        subsecItem.setAttribute('data-testid', 'toc-item');
+	                        const subsecItem = document.createElement('li');
+	                        subsecItem.classList.add('draggable');
+	                        subsecItem.setAttribute('data-testid', 'toc-item');
                         subsecItem.dataset.tocType = 'subsection';
                         subsecItem.dataset.targetId = child.id;
                         subsecItem.dataset.parentId = sec.id;
@@ -2021,19 +2062,18 @@
                         const subsecLink = document.createElement('a');
                         subsecLink.href = `#${child.id}`;
                         subsecLink.textContent = subsecTitle;
-                        subsecRow.appendChild(subsecLink);
-                        subsecItem.appendChild(subsecRow);
+	                        subsecRow.appendChild(subsecLink);
+	                        subsecItem.appendChild(subsecRow);
 
-                        appendEntriesToToc(subsecItem, getDirectChildItems(child, '.entry'), `entry-${sIdx}-${subIdx}`, child.id);
-                        sectionChildren.appendChild(subsecItem);
-                        subIdx += 1;
-                        return;
-                    }
+	                        appendEntriesToToc(subsecItem, getDirectChildItems(child, '.entry'), child.id);
+	                        sectionChildren.appendChild(subsecItem);
+	                        return;
+	                    }
 
-                    if (child.matches('.entry') && tocIncludeEntries) {
-                        child.id = `entry-${sIdx}-root-${directEntryIdx}`;
-                        const rawTitle = child.querySelector('.entry-title') ? child.querySelector('.entry-title').innerText : '';
-                        const entryTitle = rawTitle.trim() || 'Untitled Entry';
+	                    if (child.matches('.entry') && state.tocIncludeEntries) {
+	                        ensureDomId(child, 'entry');
+	                        const rawTitle = child.querySelector('.entry-title') ? child.querySelector('.entry-title').innerText : '';
+	                        const entryTitle = rawTitle.trim() || 'Untitled Entry';
 
                         const entryItem = document.createElement('li');
                         entryItem.classList.add('draggable');
@@ -2048,12 +2088,11 @@
                         const entryLink = document.createElement('a');
                         entryLink.href = `#${child.id}`;
                         entryLink.textContent = entryTitle;
-                        entryRow.appendChild(entryLink);
-                        entryItem.appendChild(entryRow);
-                        sectionChildren.appendChild(entryItem);
-                        directEntryIdx += 1;
-                    }
-                });
+	                        entryRow.appendChild(entryLink);
+	                        entryItem.appendChild(entryRow);
+	                        sectionChildren.appendChild(entryItem);
+	                    }
+	                });
 
                 if (sectionChildren.children.length > 0) {
                     secItem.appendChild(sectionChildren);
@@ -2081,7 +2120,7 @@
                     <button class="add-btn add-entry" data-testid="add-entry">+ Add Entry</button>`;
         }
 
-        function deleteItem(button) {
+	        function deleteItem(button) {
             const deleteType = button.dataset.deleteType;
             const target = button.closest(deleteType === 'entry' ? '.entry' : deleteType === 'subsection' ? '.subsection-group' : '.section');
             if (!target) return;
@@ -2093,9 +2132,9 @@
             const scopeNote = deleteType === 'entry' ? '' : ' This also removes everything inside it.';
             if (!window.confirm(`Delete "${label}"?${scopeNote}`)) return;
 
-            target.remove();
-            triggerUpdate();
-        }
+	            target.remove();
+	            triggerStructureUpdate();
+	        }
 
 	        document.body.addEventListener('click', (e) => {
 	            if (!document.body.classList.contains('is-editing')) return;
@@ -2106,34 +2145,34 @@
                 return;
             }
 
-            if (e.target.classList.contains('add-entry')) {
+	            if (e.target.classList.contains('add-entry')) {
                 const newEntry = document.createElement('div');
                 newEntry.className = 'entry draggable';
                 newEntry.dataset.type = 'entry';
-                newEntry.innerHTML = createEntryMarkup();
-                e.target.parentNode.insertBefore(newEntry, e.target);
-                triggerUpdate();
-            }
+	                newEntry.innerHTML = createEntryMarkup();
+	                e.target.parentNode.insertBefore(newEntry, e.target);
+	                triggerStructureUpdate();
+	            }
             
-            if (e.target.classList.contains('add-subsection')) {
+	            if (e.target.classList.contains('add-subsection')) {
                 const newSubsection = document.createElement('div');
                 newSubsection.className = 'subsection-group draggable';
                 newSubsection.dataset.type = 'subsection';
                 newSubsection.innerHTML = createSubsectionMarkup();
-                e.target.parentNode.insertBefore(newSubsection, e.target);
-                focusEditableAtEnd(newSubsection.querySelector('.subsection-title'));
-                triggerUpdate();
-            }
+	                e.target.parentNode.insertBefore(newSubsection, e.target);
+	                focusEditableAtEnd(newSubsection.querySelector('.subsection-title'));
+	                triggerStructureUpdate();
+	            }
 
-	            if (e.target.classList.contains('add-section')) {
+		            if (e.target.classList.contains('add-section')) {
 	                const newSection = document.createElement('div');
 	                newSection.className = 'section draggable';
 	                newSection.dataset.type = 'section';
 	                newSection.innerHTML = createSectionMarkup();
-	                document.getElementById('app-root').appendChild(newSection);
-	                focusEditableAtEnd(newSection.querySelector('.section-title'));
-	                triggerUpdate();
-	            }
+		                document.getElementById('app-root').appendChild(newSection);
+		                focusEditableAtEnd(newSection.querySelector('.section-title'));
+		                triggerStructureUpdate();
+		            }
 	        });
 
 	        function clearTocDragIndicators() {
@@ -2142,24 +2181,24 @@
 	            });
 	        }
 
-	        function cleanupTocDrag() {
-	            if (tocDragState && tocDragState.sourceItem) {
-	                tocDragState.sourceItem.classList.remove('dragging');
-	            }
-	            clearTocDragIndicators();
-	            tocDragState = null;
-	        }
+		        function cleanupTocDrag() {
+		            if (state.tocDragState && state.tocDragState.sourceItem) {
+		                state.tocDragState.sourceItem.classList.remove('dragging');
+		            }
+		            clearTocDragIndicators();
+		            state.tocDragState = null;
+		        }
 
-	        function getTocDropTarget(target) {
-	            const li = target && target.closest ? target.closest('#toc li.draggable[data-toc-type][data-target-id]') : null;
-	            if (!li) return null;
-	            if (!tocDragState) return null;
-	            if (li === tocDragState.sourceItem) return null;
-	            if (li.dataset.tocType !== tocDragState.tocType) return null;
-	            if ((li.dataset.parentId || '') !== (tocDragState.parentId || '')) return null;
-	            if (li.parentElement !== tocDragState.sourceList) return null;
-	            return li;
-	        }
+		        function getTocDropTarget(target) {
+		            const li = target && target.closest ? target.closest('#toc li.draggable[data-toc-type][data-target-id]') : null;
+		            if (!li) return null;
+		            if (!state.tocDragState) return null;
+		            if (li === state.tocDragState.sourceItem) return null;
+		            if (li.dataset.tocType !== state.tocDragState.tocType) return null;
+		            if ((li.dataset.parentId || '') !== (state.tocDragState.parentId || '')) return null;
+		            if (li.parentElement !== state.tocDragState.sourceList) return null;
+		            return li;
+		        }
 
 	        document.addEventListener('dragstart', (e) => {
 	            const handle = e.target.closest ? e.target.closest('#toc .toc-drag-handle') : null;
@@ -2178,13 +2217,13 @@
 	                return;
 	            }
 
-	            tocDragState = {
-	                sourceItem,
-	                sourceList: sourceItem.parentElement,
-	                tocType: sourceItem.dataset.tocType,
-	                parentId: sourceItem.dataset.parentId || '',
-	                targetNode
-	            };
+		            state.tocDragState = {
+		                sourceItem,
+		                sourceList: sourceItem.parentElement,
+		                tocType: sourceItem.dataset.tocType,
+		                parentId: sourceItem.dataset.parentId || '',
+		                targetNode
+		            };
 
 	            sourceItem.classList.add('dragging');
 	            if (e.dataTransfer) {
@@ -2193,10 +2232,10 @@
 	            }
 	        });
 
-	        document.addEventListener('dragover', (e) => {
-	            if (!tocDragState) return;
-	            const targetItem = getTocDropTarget(e.target);
-	            if (!targetItem) return;
+		        document.addEventListener('dragover', (e) => {
+		            if (!state.tocDragState) return;
+		            const targetItem = getTocDropTarget(e.target);
+		            if (!targetItem) return;
 
 	            e.preventDefault();
 
@@ -2210,9 +2249,9 @@
 	            }
 	        });
 
-	        document.addEventListener('drop', (e) => {
-	            if (!tocDragState) return;
-	            const targetItem = getTocDropTarget(e.target);
+		        document.addEventListener('drop', (e) => {
+		            if (!state.tocDragState) return;
+		            const targetItem = getTocDropTarget(e.target);
 	            if (!targetItem) {
 	                cleanupTocDrag();
 	                return;
@@ -2220,9 +2259,9 @@
 
 	            e.preventDefault();
 
-	            const targetId = targetItem.dataset.targetId;
-	            const targetNode = targetId ? document.getElementById(targetId) : null;
-	            const draggedNode = tocDragState.targetNode;
+		            const targetId = targetItem.dataset.targetId;
+		            const targetNode = targetId ? document.getElementById(targetId) : null;
+		            const draggedNode = state.tocDragState.targetNode;
 	            if (!targetNode || !draggedNode || targetNode.parentNode !== draggedNode.parentNode) {
 	                cleanupTocDrag();
 	                return;
@@ -2236,14 +2275,14 @@
 	                targetNode.parentNode.insertBefore(draggedNode, targetNode.nextSibling);
 	            }
 
-	            cleanupTocDrag();
-	            triggerUpdate();
-	        });
+		            cleanupTocDrag();
+		            triggerStructureUpdate();
+		        });
 
-	        document.addEventListener('dragend', () => {
-	            if (!tocDragState) return;
-	            cleanupTocDrag();
-	        });
+		        document.addEventListener('dragend', () => {
+		            if (!state.tocDragState) return;
+		            cleanupTocDrag();
+		        });
 	    </script>
 
 
