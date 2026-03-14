@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node scripts/build-singlefile.mjs",
+    "pretest": "node scripts/build-singlefile.mjs",
     "test:e2e": "playwright test",
     "test": "playwright test"
   },
@@ -10,4 +12,3 @@
     "@playwright/test": "^1.50.0"
   }
 }
-
