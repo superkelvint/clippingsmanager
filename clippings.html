@@ -282,6 +282,24 @@
         #toc-container > ul { padding-left: 0; }
         #toc-container a { color: #2563eb; text-decoration: underline; }
         #toc-container a:hover { color: #1d4ed8; text-decoration: underline; }
+        #toc .toc-row {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+        #toc li.draggable {
+            padding: 0.15rem 0.25rem;
+            border-radius: 6px;
+        }
+        #toc .toc-drag-handle {
+            margin-right: 0;
+            font-size: 1rem;
+            color: #94a3b8;
+        }
+        #toc li.drag-over-top,
+        #toc li.drag-over-bottom {
+            background: rgba(37, 99, 235, 0.06);
+        }
         #search-container {
             margin: 0 0 1rem;
             padding: 0.55rem 0;
@@ -507,7 +525,7 @@
             cursor: not-allowed;
         }
     </style>
-<style></style><style></style><style></style><style></style><style></style></head>
+<style></style><style></style><style></style><style></style><style></style><style></style></head>
 <body class="" style="scroll-behavior: auto !important;">
     <button id="help-btn" type="button">Help</button>
     <button id="highlight-toggle-btn" type="button">Highlight Colors</button>
@@ -532,7 +550,7 @@
     <div id="toc-container">
         <div class="toc-header">
             <h3 style="margin:0;">Table of Contents</h3>
-            <button id="toc-level-btn" type="button">Hide Entries</button>
+            <button id="toc-level-btn" type="button">Show Entries</button>
         </div>
         <div id="toc"><ul></ul></div>
     </div>
@@ -545,7 +563,7 @@
     <main id="app-root"></main>
     <button class="add-btn add-section" style="margin-top: 2rem;">+ Add Section</button>
     <div id="toast" class="">✓ Saved</div>
-    <div id="highlight-popup" style="top: 614.264px; left: 378.611px;" hidden=""><button type="button" class="highlight-popup-swatch" title="Apply rgb(53, 192, 2) highlight" style="background-color: rgb(53, 192, 2);"></button><button type="button" class="highlight-popup-swatch" title="Apply rgb(134, 239, 172) highlight" style="background-color: rgb(134, 239, 172);"></button><button type="button" class="highlight-popup-swatch" title="Apply rgb(147, 197, 253) highlight" style="background-color: rgb(147, 197, 253);"></button><button type="button" class="highlight-popup-delete">Unhighlight</button></div>
+    <div id="highlight-popup" style="top: 614.264px; left: 378.611px;" hidden=""><button type="button" class="highlight-popup-swatch" title="Apply rgb(53, 192, 2) highlight" style="background-color: rgb(53, 192, 2);"></button><button type="button" class="highlight-popup-swatch" title="Apply rgb(134, 239, 172) highlight" style="background-color: rgb(134, 239, 172);"></button><button type="button" class="highlight-popup-swatch" title="Apply rgb(147, 197, 253) highlight" style="background-color: rgb(147, 197, 253);"></button></div>
     <div id="version-badge">v0.1.0</div>
     <script id="highlight-palette-data" type="application/json">["rgb(53, 192, 2)","rgb(134, 239, 172)","rgb(147, 197, 253)"]</script>
     <div id="help-modal" hidden="">
@@ -594,7 +612,7 @@
 
             <h3>6. Reordering</h3>
             <ul>
-                <li>When editing is on, drag using the <strong>⋮⋮</strong> handles to reorder sections, subsections, or entries within the same container.</li>
+                <li>When editing is on, use the <strong>⋮⋮</strong> handles in the Table of Contents to reorder sections, subsections, or entries within the same group.</li>
             </ul>
 
             <h3>7. Reset Everything (Destructive)</h3>
@@ -633,20 +651,21 @@
         let saveInProgress = false;
         let pendingSave = false;
         let listenersBound = false;
-        let tocIncludeEntries = false;
-        let isUnsupportedBrowser = false;
-        let resetExpectedTitle = '';
-        let highlightPalette = [];
-        let highlightSelectionRange = null;
-        let highlightTargetMark = null;
-        const statusEl = document.getElementById('save-status');
-        const helpModalEl = document.getElementById('help-modal');
-        const resetModalEl = document.getElementById('reset-modal');
-        const highlightPopupEl = document.getElementById('highlight-popup');
-        const highlightPaletteDataEl = document.getElementById('highlight-palette-data');
-        const highlightPanelEl = document.getElementById('highlight-panel');
-        const highlightToggleBtnEl = document.getElementById('highlight-toggle-btn');
-        const entrySearchEl = document.getElementById('entry-search');
+	        let tocIncludeEntries = false;
+	        let isUnsupportedBrowser = false;
+	        let resetExpectedTitle = '';
+	        let highlightPalette = [];
+	        let highlightSelectionRange = null;
+	        let highlightTargetMark = null;
+	        let tocDragState = null;
+	        const statusEl = document.getElementById('save-status');
+	        const helpModalEl = document.getElementById('help-modal');
+	        const resetModalEl = document.getElementById('reset-modal');
+	        const highlightPopupEl = document.getElementById('highlight-popup');
+	        const highlightPaletteDataEl = document.getElementById('highlight-palette-data');
+	        const highlightPanelEl = document.getElementById('highlight-panel');
+	        const highlightToggleBtnEl = document.getElementById('highlight-toggle-btn');
+	        const entrySearchEl = document.getElementById('entry-search');
 
         const editableSelector = '[contenteditable]';
         const defaultHighlightPalette = ['#facc15', '#86efac', '#93c5fd'];
@@ -688,6 +707,7 @@
 
                 document.getElementById('main-title').innerHTML = parsedTitle.innerHTML;
                 document.getElementById('app-root').innerHTML = parsedRoot.innerHTML;
+                removeLegacyContentDragHandles(document.getElementById('app-root'));
                 document.title = parsedTitle.innerText.trim() || 'Untitled Document';
                 fileHandle = handle;
                 generateTOC();
@@ -702,6 +722,11 @@
             const btn = document.getElementById('toc-level-btn');
             if (!btn) return;
             btn.innerText = tocIncludeEntries ? 'Hide Entries' : 'Show Entries';
+        }
+
+        function removeLegacyContentDragHandles(root = document) {
+            if (!root) return;
+            root.querySelectorAll('.drag-handle:not(.toc-drag-handle)').forEach((el) => el.remove());
         }
 
         function openHelp() {
@@ -1303,9 +1328,9 @@
             selection.addRange(range);
         }
 
-        function bindEditingListeners() {
-            if (listenersBound) return;
-            listenersBound = true;
+	        function bindEditingListeners() {
+	            if (listenersBound) return;
+	            listenersBound = true;
 
             document.getElementById('app-root').addEventListener('input', triggerUpdate);
             document.getElementById('app-root').addEventListener('keyup', (e) => {
@@ -1384,12 +1409,12 @@
                 triggerUpdate({ target: editableTarget });
             });
 
-            document.addEventListener('drop', (e) => {
-                if (!document.body.classList.contains('is-editing')) return;
-                if (draggedItem) return; // preserve internal drag-and-drop behavior
+	            document.addEventListener('drop', (e) => {
+	                if (!document.body.classList.contains('is-editing')) return;
+	                if (tocDragState) return; // preserve TOC drag-and-drop behavior
 
-                const editableTarget = e.target.closest('[contenteditable="true"]');
-                if (!editableTarget) return;
+	                const editableTarget = e.target.closest('[contenteditable="true"]');
+	                if (!editableTarget) return;
 
                 e.preventDefault();
                 editableTarget.focus();
@@ -1560,6 +1585,7 @@
             // Clean up any lingering inline styles that might have gotten saved previously
             const btn = document.getElementById('enable-edit-btn');
             if (btn && !isUnsupportedBrowser) btn.removeAttribute('style');
+            removeLegacyContentDragHandles(document.getElementById('app-root'));
             
             bindEditingListeners();
             generateTOC();
@@ -1665,7 +1691,17 @@
             return Array.from(parent.children).filter((child) => child.matches(selector));
         }
 
-        function appendEntriesToToc(parentItem, entryNodes, idPrefix) {
+        function createTocDragHandle() {
+            const handle = document.createElement('span');
+            handle.className = 'drag-handle toc-drag-handle';
+            handle.draggable = true;
+            handle.textContent = '⋮⋮';
+            handle.title = 'Drag to reorder';
+            handle.setAttribute('aria-label', 'Drag to reorder');
+            return handle;
+        }
+
+        function appendEntriesToToc(parentItem, entryNodes, idPrefix, parentTargetId) {
             if (!tocIncludeEntries || entryNodes.length === 0) return;
 
             const entryList = document.createElement('ul');
@@ -1675,10 +1711,19 @@
                 const entryTitle = rawTitle.trim() || 'Untitled Entry';
 
                 const entryItem = document.createElement('li');
+                entryItem.classList.add('draggable');
+                entryItem.dataset.tocType = 'entry';
+                entryItem.dataset.targetId = entry.id;
+                entryItem.dataset.parentId = parentTargetId || '';
+
+                const entryRow = document.createElement('span');
+                entryRow.className = 'toc-row';
+                entryRow.appendChild(createTocDragHandle());
                 const entryLink = document.createElement('a');
                 entryLink.href = `#${entry.id}`;
                 entryLink.textContent = entryTitle;
-                entryItem.appendChild(entryLink);
+                entryRow.appendChild(entryLink);
+                entryItem.appendChild(entryRow);
                 entryList.appendChild(entryItem);
             });
 
@@ -1694,12 +1739,21 @@
                 sec.id = `sec-${sIdx}`;
 
                 const secItem = document.createElement('li');
+                secItem.classList.add('draggable');
+                secItem.dataset.tocType = 'section';
+                secItem.dataset.targetId = sec.id;
+                secItem.dataset.parentId = 'app-root';
+
+                const secRow = document.createElement('span');
+                secRow.className = 'toc-row';
+                secRow.appendChild(createTocDragHandle());
                 const secStrong = document.createElement('strong');
                 const secLink = document.createElement('a');
                 secLink.href = `#${sec.id}`;
                 secLink.textContent = sTitle;
                 secStrong.appendChild(secLink);
-                secItem.appendChild(secStrong);
+                secRow.appendChild(secStrong);
+                secItem.appendChild(secRow);
 
                 const sectionChildren = document.createElement('ul');
                 let subIdx = 0;
@@ -1711,12 +1765,21 @@
                         child.id = `subsec-${sIdx}-${subIdx}`;
 
                         const subsecItem = document.createElement('li');
+                        subsecItem.classList.add('draggable');
+                        subsecItem.dataset.tocType = 'subsection';
+                        subsecItem.dataset.targetId = child.id;
+                        subsecItem.dataset.parentId = sec.id;
+
+                        const subsecRow = document.createElement('span');
+                        subsecRow.className = 'toc-row';
+                        subsecRow.appendChild(createTocDragHandle());
                         const subsecLink = document.createElement('a');
                         subsecLink.href = `#${child.id}`;
                         subsecLink.textContent = subsecTitle;
-                        subsecItem.appendChild(subsecLink);
+                        subsecRow.appendChild(subsecLink);
+                        subsecItem.appendChild(subsecRow);
 
-                        appendEntriesToToc(subsecItem, getDirectChildItems(child, '.entry'), `entry-${sIdx}-${subIdx}`);
+                        appendEntriesToToc(subsecItem, getDirectChildItems(child, '.entry'), `entry-${sIdx}-${subIdx}`, child.id);
                         sectionChildren.appendChild(subsecItem);
                         subIdx += 1;
                         return;
@@ -1728,10 +1791,19 @@
                         const entryTitle = rawTitle.trim() || 'Untitled Entry';
 
                         const entryItem = document.createElement('li');
+                        entryItem.classList.add('draggable');
+                        entryItem.dataset.tocType = 'entry';
+                        entryItem.dataset.targetId = child.id;
+                        entryItem.dataset.parentId = sec.id;
+
+                        const entryRow = document.createElement('span');
+                        entryRow.className = 'toc-row';
+                        entryRow.appendChild(createTocDragHandle());
                         const entryLink = document.createElement('a');
                         entryLink.href = `#${child.id}`;
                         entryLink.textContent = entryTitle;
-                        entryItem.appendChild(entryLink);
+                        entryRow.appendChild(entryLink);
+                        entryItem.appendChild(entryRow);
                         sectionChildren.appendChild(entryItem);
                         directEntryIdx += 1;
                     }
@@ -1747,18 +1819,18 @@
         }
 
         function createEntryMarkup() {
-            return `<h4><span class="item-toolbar"><span class="drag-handle" draggable="true">⋮⋮</span><span contenteditable="true" class="entry-title" data-placeholder="Title (Auto-generates if empty)"></span><button class="delete-btn" type="button" data-delete-type="entry">Delete Entry</button></span></h4>
+            return `<h4><span class="item-toolbar"><span contenteditable="true" class="entry-title" data-placeholder="Title (Auto-generates if empty)"></span><button class="delete-btn" type="button" data-delete-type="entry">Delete Entry</button></span></h4>
                     <div class="source" contenteditable="true" data-placeholder="Source..."></div>
                     <div class="text" contenteditable="true" data-placeholder="Paste notes here..."></div>`;
         }
 
         function createSubsectionMarkup() {
-            return `<h3><span class="item-toolbar"><span class="drag-handle" draggable="true">⋮⋮</span><span contenteditable="true" class="subsection-title" data-placeholder="Subsection Title..."></span><button class="delete-btn" type="button" data-delete-type="subsection">Delete Subsection</button></span></h3>
+            return `<h3><span class="item-toolbar"><span contenteditable="true" class="subsection-title" data-placeholder="Subsection Title..."></span><button class="delete-btn" type="button" data-delete-type="subsection">Delete Subsection</button></span></h3>
                     <button class="add-btn add-entry">+ Add Entry</button>`;
         }
 
         function createSectionMarkup() {
-            return `<h2><span class="item-toolbar"><span class="drag-handle" draggable="true">⋮⋮</span><span contenteditable="true" class="section-title" data-placeholder="Section Title..."></span><button class="delete-btn" type="button" data-delete-type="section">Delete Section</button></span></h2>
+            return `<h2><span class="item-toolbar"><span contenteditable="true" class="section-title" data-placeholder="Section Title..."></span><button class="delete-btn" type="button" data-delete-type="section">Delete Section</button></span></h2>
                     <button class="add-btn add-subsection">+ Add Subsection</button>
                     <button class="add-btn add-entry">+ Add Entry</button>`;
         }
@@ -1779,8 +1851,8 @@
             triggerUpdate();
         }
 
-        document.body.addEventListener('click', (e) => {
-            if (!document.body.classList.contains('is-editing')) return;
+	        document.body.addEventListener('click', (e) => {
+	            if (!document.body.classList.contains('is-editing')) return;
 
             const deleteButton = e.target.closest('.delete-btn');
             if (deleteButton) {
@@ -1807,84 +1879,127 @@
                 triggerUpdate();
             }
 
-            if (e.target.classList.contains('add-section')) {
-                const newSection = document.createElement('div');
-                newSection.className = 'section draggable';
-                newSection.dataset.type = 'section';
-                newSection.innerHTML = createSectionMarkup();
-                document.getElementById('app-root').appendChild(newSection);
-                focusEditableAtEnd(newSection.querySelector('.section-title'));
-                triggerUpdate();
-            }
-        });
+	            if (e.target.classList.contains('add-section')) {
+	                const newSection = document.createElement('div');
+	                newSection.className = 'section draggable';
+	                newSection.dataset.type = 'section';
+	                newSection.innerHTML = createSectionMarkup();
+	                document.getElementById('app-root').appendChild(newSection);
+	                focusEditableAtEnd(newSection.querySelector('.section-title'));
+	                triggerUpdate();
+	            }
+	        });
 
-        let draggedItem = null;
+	        function clearTocDragIndicators() {
+	            document.querySelectorAll('#toc .drag-over-top, #toc .drag-over-bottom').forEach((el) => {
+	                el.classList.remove('drag-over-top', 'drag-over-bottom');
+	            });
+	        }
 
-        document.addEventListener('dragstart', (e) => {
-            if (e.target.classList.contains('drag-handle')) {
-                draggedItem = e.target.closest('.draggable');
-                setTimeout(() => draggedItem.classList.add('dragging'), 0);
-                e.dataTransfer.effectAllowed = 'move';
-            } else {
-                e.preventDefault();
-            }
-        });
+	        function cleanupTocDrag() {
+	            if (tocDragState && tocDragState.sourceItem) {
+	                tocDragState.sourceItem.classList.remove('dragging');
+	            }
+	            clearTocDragIndicators();
+	            tocDragState = null;
+	        }
 
-        document.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            if (!draggedItem) return;
+	        function getTocDropTarget(target) {
+	            const li = target && target.closest ? target.closest('#toc li.draggable[data-toc-type][data-target-id]') : null;
+	            if (!li) return null;
+	            if (!tocDragState) return null;
+	            if (li === tocDragState.sourceItem) return null;
+	            if (li.dataset.tocType !== tocDragState.tocType) return null;
+	            if ((li.dataset.parentId || '') !== (tocDragState.parentId || '')) return null;
+	            if (li.parentElement !== tocDragState.sourceList) return null;
+	            return li;
+	        }
 
-            const target = e.target.closest('.draggable');
-            if (!target || target === draggedItem || target.dataset.type !== draggedItem.dataset.type || target.parentNode !== draggedItem.parentNode) return;
+	        document.addEventListener('dragstart', (e) => {
+	            const handle = e.target.closest ? e.target.closest('#toc .toc-drag-handle') : null;
+	            if (!handle) return;
+	            if (!document.body.classList.contains('is-editing')) {
+	                e.preventDefault();
+	                return;
+	            }
 
-            const rect = target.getBoundingClientRect();
-            const midpoint = rect.top + rect.height / 2;
+	            const sourceItem = handle.closest('li.draggable[data-toc-type][data-target-id]');
+	            if (!sourceItem) return;
+	            const targetId = sourceItem.dataset.targetId;
+	            const targetNode = targetId ? document.getElementById(targetId) : null;
+	            if (!targetNode) {
+	                e.preventDefault();
+	                return;
+	            }
 
-            document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
-                el.classList.remove('drag-over-top', 'drag-over-bottom');
-            });
+	            tocDragState = {
+	                sourceItem,
+	                sourceList: sourceItem.parentElement,
+	                tocType: sourceItem.dataset.tocType,
+	                parentId: sourceItem.dataset.parentId || '',
+	                targetNode
+	            };
 
-            if (e.clientY < midpoint) {
-                target.classList.add('drag-over-top');
-            } else {
-                target.classList.add('drag-over-bottom');
-            }
-        });
+	            sourceItem.classList.add('dragging');
+	            if (e.dataTransfer) {
+	                e.dataTransfer.effectAllowed = 'move';
+	                e.dataTransfer.setData('text/plain', '');
+	            }
+	        });
 
-        document.addEventListener('drop', (e) => {
-            e.preventDefault();
-            if (!draggedItem) return;
+	        document.addEventListener('dragover', (e) => {
+	            if (!tocDragState) return;
+	            const targetItem = getTocDropTarget(e.target);
+	            if (!targetItem) return;
 
-            const target = e.target.closest('.draggable');
-            
-            document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
-                el.classList.remove('drag-over-top', 'drag-over-bottom');
-            });
+	            e.preventDefault();
 
-            if (target && target !== draggedItem && target.dataset.type === draggedItem.dataset.type && target.parentNode === draggedItem.parentNode) {
-                const rect = target.getBoundingClientRect();
-                const midpoint = rect.top + rect.height / 2;
-                
-                if (e.clientY < midpoint) {
-                    target.parentNode.insertBefore(draggedItem, target);
-                } else {
-                    target.parentNode.insertBefore(draggedItem, target.nextSibling);
-                }
-                triggerUpdate();
-            }
-            
-            draggedItem.classList.remove('dragging');
-            draggedItem = null;
-        });
+	            const rect = targetItem.getBoundingClientRect();
+	            const midpoint = rect.top + rect.height / 2;
+	            clearTocDragIndicators();
+	            if (e.clientY < midpoint) {
+	                targetItem.classList.add('drag-over-top');
+	            } else {
+	                targetItem.classList.add('drag-over-bottom');
+	            }
+	        });
 
-        document.addEventListener('dragend', () => {
-            if (draggedItem) draggedItem.classList.remove('dragging');
-            document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
-                el.classList.remove('drag-over-top', 'drag-over-bottom');
-            });
-            draggedItem = null;
-        });
-    </script>
+	        document.addEventListener('drop', (e) => {
+	            if (!tocDragState) return;
+	            const targetItem = getTocDropTarget(e.target);
+	            if (!targetItem) {
+	                cleanupTocDrag();
+	                return;
+	            }
+
+	            e.preventDefault();
+
+	            const targetId = targetItem.dataset.targetId;
+	            const targetNode = targetId ? document.getElementById(targetId) : null;
+	            const draggedNode = tocDragState.targetNode;
+	            if (!targetNode || !draggedNode || targetNode.parentNode !== draggedNode.parentNode) {
+	                cleanupTocDrag();
+	                return;
+	            }
+
+	            const rect = targetItem.getBoundingClientRect();
+	            const midpoint = rect.top + rect.height / 2;
+	            if (e.clientY < midpoint) {
+	                targetNode.parentNode.insertBefore(draggedNode, targetNode);
+	            } else {
+	                targetNode.parentNode.insertBefore(draggedNode, targetNode.nextSibling);
+	            }
+
+	            cleanupTocDrag();
+	            triggerUpdate();
+	        });
+
+	        document.addEventListener('dragend', () => {
+	            if (!tocDragState) return;
+	            cleanupTocDrag();
+	        });
+	    </script>
+
 
 
 </body></html>
