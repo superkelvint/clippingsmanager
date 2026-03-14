@@ -148,8 +148,6 @@ Editing and saving depend on the browser File System Access API. In practice, th
 
 For end users: there are no dependencies, no server, and no build step. Once you have the HTML file on your computer, the app works fully offline and keeps your notes in that local file.
 
-For development: JavaScript lives in `src/clippings.js` and is merged into `clippings.html` by the pre-commit hook (and can be run manually via `node scripts/build-singlefile.mjs`).
-
 ## Tests (Developer)
 
 End-to-end tests run the single-file app in headless Chrome and validate core flows like TOC-based reordering.
@@ -168,5 +166,3 @@ This repo includes a versioned hook in `.githooks/`. Enable it once per clone:
 ```bash
 git config core.hooksPath .githooks
 ```
-
-The hook rebuilds `clippings.html` from `src/clippings.js` and stages it automatically, then runs tests.
