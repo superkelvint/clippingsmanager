@@ -801,7 +801,7 @@
                 setEditingMode(false);
 	            }
 	            const ownerTitle = lock && lock.title ? ` (“${lock.title}”)` : '';
-	            els.status.innerText = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
+	            els.status.textContent = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
 	        }
 
 	        function startEditLockHeartbeat() {
@@ -880,17 +880,17 @@
 	                clearTimeout(state.saveTimeout);
 	                state.pendingSave = false;
 	            }
-            const editBtn = document.getElementById('enable-edit-btn');
-            if (editBtn) editBtn.innerText = isEditing ? 'Exit Editing' : 'Enable Editing';
-            const resetBtn = document.getElementById('reset-btn');
-            if (resetBtn) resetBtn.hidden = !isEditing;
-	            els.status.innerText = isEditing ? 'Editing Enabled - Auto-saving...' : 'Read-Only Mode';
+	            const editBtn = document.getElementById('enable-edit-btn');
+	            if (editBtn) editBtn.textContent = isEditing ? 'Exit Editing' : 'Enable Editing';
+	            const resetBtn = document.getElementById('reset-btn');
+	            if (resetBtn) resetBtn.hidden = !isEditing;
+	            els.status.textContent = isEditing ? 'Editing Enabled - Auto-saving...' : 'Read-Only Mode';
 	        }
 
 	        function setHighlightPanelOpen(isOpen) {
 	            if (!els.highlightPanel || !els.highlightToggleBtn) return;
 	            els.highlightPanel.hidden = !isOpen;
-	            els.highlightToggleBtn.innerText = isOpen ? 'Hide Highlights' : 'Highlight Colors';
+	            els.highlightToggleBtn.textContent = isOpen ? 'Hide Highlights' : 'Highlight Colors';
 	        }
 
         async function hydrateFromHandle(handle) {
@@ -913,7 +913,7 @@
                 document.getElementById('main-title').innerHTML = parsedTitle.innerHTML;
                 document.getElementById('app-root').innerHTML = parsedRoot.innerHTML;
                 removeLegacyContentDragHandles(document.getElementById('app-root'));
-                document.title = parsedTitle.innerText.trim() || 'Untitled Document';
+	                document.title = (parsedTitle.textContent || '').trim() || 'Untitled Document';
 	                state.fileHandle = handle;
 	                generateTOC();
 	                return true;
@@ -926,7 +926,7 @@
 	        function updateTocToggleLabel() {
 	            const btn = document.getElementById('toc-level-btn');
 	            if (!btn) return;
-	            btn.innerText = state.tocIncludeEntries ? 'Hide Entries' : 'Show Entries';
+	            btn.textContent = state.tocIncludeEntries ? 'Hide Entries' : 'Show Entries';
 	        }
 
         function removeLegacyContentDragHandles(root = document) {
@@ -1059,14 +1059,14 @@
 	            applyEntrySearch();
 	        }
 
-        function getPageTitleText() {
-            const titleText = document.getElementById('main-title').innerText.trim();
-            return titleText || 'Untitled Document';
-        }
+	        function getPageTitleText() {
+	            const titleText = (document.getElementById('main-title').textContent || '').trim();
+	            return titleText || 'Untitled Document';
+	        }
 
 	        function openResetModal() {
 	            if (!state.fileHandle) {
-	                els.status.innerText = 'Enable Editing first to connect a file';
+	                els.status.textContent = 'Enable Editing first to connect a file';
 	                return;
 	            }
 
@@ -1075,7 +1075,7 @@
             const confirmBtnEl = document.getElementById('confirm-reset-btn');
 	            state.resetExpectedTitle = getPageTitleText();
 
-	            requiredTitleEl.innerText = state.resetExpectedTitle;
+	            requiredTitleEl.textContent = state.resetExpectedTitle;
 	            confirmInputEl.value = '';
 	            confirmBtnEl.disabled = true;
 	            els.resetModal.hidden = false;
@@ -1093,9 +1093,9 @@
 	        }
 
 	        function resetDocumentNow() {
-            document.getElementById('main-title').innerText = 'Clippings Manager';
-            document.title = 'Clippings Manager';
-	            document.getElementById('app-root').innerHTML = '';
+	            document.getElementById('main-title').textContent = 'Clippings Manager';
+	            document.title = 'Clippings Manager';
+	            document.getElementById('app-root').replaceChildren();
 	            closeResetModal();
 	            triggerStructureUpdate();
 	        }
@@ -1523,7 +1523,7 @@
 	            clearTimeout(state.saveTimeout);
 	            autoTitle();
 	            generateTOC();
-	            els.status.innerText = 'Saving...';
+	            els.status.textContent = 'Saving...';
 	            saveToDisk();
 	        }
 
@@ -1551,7 +1551,7 @@
 	                }
 	            });
 	            document.getElementById('main-title').addEventListener('input', (e) => {
-	                document.title = e.target.innerText || 'Untitled Document';
+	                document.title = (e.target.textContent || '') || 'Untitled Document';
 	                triggerContentUpdate(e);
 	            });
 	            document.getElementById('help-btn').addEventListener('click', openHelp);
@@ -1746,8 +1746,8 @@
             const snapshotBtn = snapshot.querySelector('#enable-edit-btn');
             if (snapshotBtn) snapshotBtn.removeAttribute('style');
 
-            const snapshotStatus = snapshot.querySelector('#save-status');
-            if (snapshotStatus) snapshotStatus.innerText = 'Read-Only Mode';
+	            const snapshotStatus = snapshot.querySelector('#save-status');
+	            if (snapshotStatus) snapshotStatus.textContent = 'Read-Only Mode';
 
             const snapshotToast = snapshot.querySelector('#toast');
             if (snapshotToast) snapshotToast.classList.remove('show');
@@ -1773,7 +1773,7 @@
 	            const supportsFileSystemAccess = typeof window.showOpenFilePicker === 'function';
 	            if (!supportsFileSystemAccess) {
 	                state.isUnsupportedBrowser = true;
-	                els.status.innerText = 'Use a Chromium-based browser for editing/saving';
+	                els.status.textContent = 'Use a Chromium-based browser for editing/saving';
 	                const editBtn = document.getElementById('enable-edit-btn');
 	                if (editBtn) {
 	                    editBtn.hidden = true;
@@ -1810,7 +1810,7 @@
 	                    const existing = readEditLock(key);
 	                    if (existing && existing.owner && existing.owner !== editSessionId && !isEditLockStale(existing)) {
 	                        const ownerTitle = existing.title ? ` (“${existing.title}”)` : '';
-	                        els.status.innerText = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
+	                        els.status.textContent = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
 	                    }
 	                }
 	            } catch {}
@@ -1860,7 +1860,7 @@
 
 	        function scheduleAutosave() {
 	            clearTimeout(state.saveTimeout);
-	            els.status.innerText = 'Saving...';
+	            els.status.textContent = 'Saving...';
 	            state.saveTimeout = setTimeout(saveToDisk, 500);
 	        }
 
@@ -1896,14 +1896,14 @@
             const toast = document.getElementById('toast');
             toast.classList.add('show');
             setTimeout(() => toast.classList.remove('show'), 2000);
-	            els.status.innerText = 'Editing Enabled - Auto-saving...';
+	            els.status.textContent = 'Editing Enabled - Auto-saving...';
 	        }
 
 	        async function saveToDisk() {
 	            if (!state.fileHandle) return;
 	            if (!document.body.classList.contains('is-editing')) return;
 	            if (!hasEditLock()) {
-	                els.status.innerText = 'Save blocked: another tab is editing this file';
+	                els.status.textContent = 'Save blocked: another tab is editing this file';
 	                return;
 	            }
 	            if (state.saveInProgress) {
@@ -1921,7 +1921,7 @@
                 
 	                showToast();
 	            } catch (err) {
-	                els.status.innerText = 'Error saving!';
+	                els.status.textContent = 'Error saving!';
 	                console.error("Save failed:", err);
 	            } finally {
 	                state.saveInProgress = false;
@@ -1942,13 +1942,13 @@
                 const words = bodyText.split(/\s+/).slice(0, 4).join(' ');
                 const generatedTitle = `${sourceText ? sourceText + ' - ' : ''}${words}${words.length > 0 ? '...' : ''}`;
 
-                if (titleEl.innerText.trim() === '') {
-                    titleEl.dataset.auto = "true";
-                }
+	                if ((titleEl.textContent || '').trim() === '') {
+	                    titleEl.dataset.auto = "true";
+	                }
 
 	                if (titleEl.dataset.auto === "true" || !titleEl.hasAttribute('data-auto')) {
 	                    if (generatedTitle.length > 3 && document.activeElement !== titleEl) {
-	                        titleEl.innerText = generatedTitle;
+	                        titleEl.textContent = generatedTitle;
 	                        titleEl.dataset.auto = "true";
 	                        changed = true;
 	                    }
@@ -1992,7 +1992,7 @@
 	            const entryList = document.createElement('ul');
 	            entryNodes.forEach((entry) => {
 	                ensureDomId(entry, 'entry');
-	                const rawTitle = entry.querySelector('.entry-title') ? entry.querySelector('.entry-title').innerText : '';
+	                const rawTitle = entry.querySelector('.entry-title') ? entry.querySelector('.entry-title').textContent : '';
 	                const entryTitle = rawTitle.trim() || 'Untitled Entry';
 
 	                const entryItem = document.createElement('li');
@@ -2021,7 +2021,7 @@
 	            const topList = document.createElement('ul');
 
 	            document.querySelectorAll('.section').forEach((sec) => {
-	                const sTitle = sec.querySelector('.section-title').innerText || 'Untitled Section';
+	                const sTitle = sec.querySelector('.section-title').textContent || 'Untitled Section';
 	                ensureDomId(sec, 'sec');
 
 	                const secItem = document.createElement('li');
@@ -2046,7 +2046,7 @@
 
 	                Array.from(sec.children).forEach((child) => {
 	                    if (child.matches('.subsection-group')) {
-	                        const subsecTitle = child.querySelector('.subsection-title').innerText || 'Untitled Subsection';
+	                        const subsecTitle = child.querySelector('.subsection-title').textContent || 'Untitled Subsection';
 	                        ensureDomId(child, 'subsec');
 
 	                        const subsecItem = document.createElement('li');
@@ -2072,7 +2072,7 @@
 
 	                    if (child.matches('.entry') && state.tocIncludeEntries) {
 	                        ensureDomId(child, 'entry');
-	                        const rawTitle = child.querySelector('.entry-title') ? child.querySelector('.entry-title').innerText : '';
+	                        const rawTitle = child.querySelector('.entry-title') ? child.querySelector('.entry-title').textContent : '';
 	                        const entryTitle = rawTitle.trim() || 'Untitled Entry';
 
                         const entryItem = document.createElement('li');
@@ -2103,22 +2103,100 @@
             toc.replaceChildren(topList);
         }
 
-        function createEntryMarkup() {
-            return `<h4><span class="item-toolbar"><span contenteditable="true" class="entry-title" data-testid="entry-title" data-placeholder="Title (Auto-generates if empty)"></span><button class="delete-btn" data-testid="delete-entry" type="button" data-delete-type="entry">Delete Entry</button></span></h4>
-                    <div class="source" data-testid="entry-source" contenteditable="true" data-placeholder="Source..."></div>
-                    <div class="text" data-testid="entry-text" contenteditable="true" data-placeholder="Paste notes here..."></div>`;
-        }
+	        function createDeleteButton(deleteType, text, testId) {
+	            const button = document.createElement('button');
+	            button.type = 'button';
+	            button.className = 'delete-btn';
+	            button.dataset.deleteType = deleteType;
+	            if (testId) button.setAttribute('data-testid', testId);
+	            button.textContent = text;
+	            return button;
+	        }
 
-        function createSubsectionMarkup() {
-            return `<h3><span class="item-toolbar"><span contenteditable="true" class="subsection-title" data-testid="subsection-title" data-placeholder="Subsection Title..."></span><button class="delete-btn" data-testid="delete-subsection" type="button" data-delete-type="subsection">Delete Subsection</button></span></h3>
-                    <button class="add-btn add-entry" data-testid="add-entry">+ Add Entry</button>`;
-        }
+	        function createEditableSpan(className, testId, placeholder) {
+	            const span = document.createElement('span');
+	            span.className = className;
+	            span.setAttribute('contenteditable', 'true');
+	            if (testId) span.setAttribute('data-testid', testId);
+	            if (placeholder) span.dataset.placeholder = placeholder;
+	            return span;
+	        }
 
-        function createSectionMarkup() {
-            return `<h2><span class="item-toolbar"><span contenteditable="true" class="section-title" data-testid="section-title" data-placeholder="Section Title..."></span><button class="delete-btn" data-testid="delete-section" type="button" data-delete-type="section">Delete Section</button></span></h2>
-                    <button class="add-btn add-subsection" data-testid="add-subsection">+ Add Subsection</button>
-                    <button class="add-btn add-entry" data-testid="add-entry">+ Add Entry</button>`;
-        }
+	        function createAddButton(classNames, testId, text) {
+	            const button = document.createElement('button');
+	            button.type = 'button';
+	            button.className = classNames;
+	            if (testId) button.setAttribute('data-testid', testId);
+	            button.textContent = text;
+	            return button;
+	        }
+
+	        function createEntryElement() {
+	            const entry = document.createElement('div');
+	            entry.className = 'entry draggable';
+	            entry.dataset.type = 'entry';
+
+	            const heading = document.createElement('h4');
+	            const toolbar = document.createElement('span');
+	            toolbar.className = 'item-toolbar';
+
+	            const title = createEditableSpan('entry-title', 'entry-title', 'Title (Auto-generates if empty)');
+	            const del = createDeleteButton('entry', 'Delete Entry', 'delete-entry');
+	            toolbar.append(title, del);
+	            heading.appendChild(toolbar);
+
+	            const source = document.createElement('div');
+	            source.className = 'source';
+	            source.setAttribute('data-testid', 'entry-source');
+	            source.setAttribute('contenteditable', 'true');
+	            source.dataset.placeholder = 'Source...';
+
+	            const text = document.createElement('div');
+	            text.className = 'text';
+	            text.setAttribute('data-testid', 'entry-text');
+	            text.setAttribute('contenteditable', 'true');
+	            text.dataset.placeholder = 'Paste notes here...';
+
+	            entry.append(heading, source, text);
+	            return entry;
+	        }
+
+	        function createSubsectionElement() {
+	            const group = document.createElement('div');
+	            group.className = 'subsection-group draggable';
+	            group.dataset.type = 'subsection';
+
+	            const heading = document.createElement('h3');
+	            const toolbar = document.createElement('span');
+	            toolbar.className = 'item-toolbar';
+	            const title = createEditableSpan('subsection-title', 'subsection-title', 'Subsection Title...');
+	            const del = createDeleteButton('subsection', 'Delete Subsection', 'delete-subsection');
+	            toolbar.append(title, del);
+	            heading.appendChild(toolbar);
+
+	            const addEntry = createAddButton('add-btn add-entry', 'add-entry', '+ Add Entry');
+	            group.append(heading, addEntry);
+	            return group;
+	        }
+
+	        function createSectionElement() {
+	            const section = document.createElement('div');
+	            section.className = 'section draggable';
+	            section.dataset.type = 'section';
+
+	            const heading = document.createElement('h2');
+	            const toolbar = document.createElement('span');
+	            toolbar.className = 'item-toolbar';
+	            const title = createEditableSpan('section-title', 'section-title', 'Section Title...');
+	            const del = createDeleteButton('section', 'Delete Section', 'delete-section');
+	            toolbar.append(title, del);
+	            heading.appendChild(toolbar);
+
+	            const addSub = createAddButton('add-btn add-subsection', 'add-subsection', '+ Add Subsection');
+	            const addEntry = createAddButton('add-btn add-entry', 'add-entry', '+ Add Entry');
+	            section.append(heading, addSub, addEntry);
+	            return section;
+	        }
 
 	        function deleteItem(button) {
             const deleteType = button.dataset.deleteType;
@@ -2128,9 +2206,9 @@
             const labelTarget = target.querySelector(
                 deleteType === 'entry' ? '.entry-title' : deleteType === 'subsection' ? '.subsection-title' : '.section-title'
             );
-            const label = (labelTarget && labelTarget.innerText.trim()) || `this ${deleteType}`;
-            const scopeNote = deleteType === 'entry' ? '' : ' This also removes everything inside it.';
-            if (!window.confirm(`Delete "${label}"?${scopeNote}`)) return;
+	            const label = (labelTarget && (labelTarget.textContent || '').trim()) || `this ${deleteType}`;
+	            const scopeNote = deleteType === 'entry' ? '' : ' This also removes everything inside it.';
+	            if (!window.confirm(`Delete "${label}"?${scopeNote}`)) return;
 
 	            target.remove();
 	            triggerStructureUpdate();
@@ -2146,29 +2224,20 @@
             }
 
 	            if (e.target.classList.contains('add-entry')) {
-                const newEntry = document.createElement('div');
-                newEntry.className = 'entry draggable';
-                newEntry.dataset.type = 'entry';
-	                newEntry.innerHTML = createEntryMarkup();
+	                const newEntry = createEntryElement();
 	                e.target.parentNode.insertBefore(newEntry, e.target);
 	                triggerStructureUpdate();
 	            }
             
 	            if (e.target.classList.contains('add-subsection')) {
-                const newSubsection = document.createElement('div');
-                newSubsection.className = 'subsection-group draggable';
-                newSubsection.dataset.type = 'subsection';
-                newSubsection.innerHTML = createSubsectionMarkup();
+	                const newSubsection = createSubsectionElement();
 	                e.target.parentNode.insertBefore(newSubsection, e.target);
 	                focusEditableAtEnd(newSubsection.querySelector('.subsection-title'));
 	                triggerStructureUpdate();
 	            }
 
 		            if (e.target.classList.contains('add-section')) {
-	                const newSection = document.createElement('div');
-	                newSection.className = 'section draggable';
-	                newSection.dataset.type = 'section';
-	                newSection.innerHTML = createSectionMarkup();
+		                const newSection = createSectionElement();
 		                document.getElementById('app-root').appendChild(newSection);
 		                focusEditableAtEnd(newSection.querySelector('.section-title'));
 		                triggerStructureUpdate();

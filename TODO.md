@@ -11,8 +11,8 @@ This file tracks the staff-engineer review items and their implementation progre
 ## Maintainability / correctness
 
 - [x] ~~Split `triggerUpdate()` into `triggerStructureUpdate()` vs `triggerContentUpdate()`; avoid running heavy work for every keystroke.~~
-- [ ] Prefer `textContent` over `innerText` when layout-sensitive text isn’t required.
-- [ ] Avoid `innerHTML` for new section/subsection/entry creation; build nodes with `createElement` (reduces injection risk, easier refactors).
+- [x] ~~Prefer `textContent` over `innerText` when layout-sensitive text isn’t required.~~
+- [x] ~~Avoid `innerHTML` for new section/subsection/entry creation; build nodes with `createElement` (reduces injection risk, easier refactors).~~
 
 ## Performance / scalability
 
