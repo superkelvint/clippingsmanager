@@ -657,17 +657,18 @@
 	            entrySearch: document.getElementById('entry-search'),
 	        };
 
-	        const state = {
-	            fileHandle: null,
-	            saveTimeout: null,
-	            saveInProgress: false,
-	            pendingSave: false,
-	            listenersBound: false,
-	            tocIncludeEntries: false,
-	            isUnsupportedBrowser: false,
-	            resetExpectedTitle: '',
-	            highlightPalette: [],
-	            highlightSelectionRange: null,
+		        const state = {
+		            fileHandle: null,
+		            saveTimeout: null,
+		            saveInProgress: false,
+		            pendingSave: false,
+		            baseListenersBound: false,
+		            editingListenersController: null,
+		            tocIncludeEntries: false,
+		            isUnsupportedBrowser: false,
+		            resetExpectedTitle: '',
+		            highlightPalette: [],
+		            highlightSelectionRange: null,
 	            highlightTargetMark: null,
 	            tocDragState: null,
 	            tocRegenRaf: null,
@@ -880,15 +881,21 @@
 	            state.editLockKey = null;
 	        }
 
-	        function setEditingMode(isEditing) {
-            document.body.classList.toggle('is-editing', isEditing);
-            document.querySelectorAll(editableSelector).forEach((el) => {
-                el.setAttribute('contenteditable', isEditing ? 'true' : 'false');
-            });
-	            if (!isEditing) {
-	                clearTimeout(state.saveTimeout);
-	                state.pendingSave = false;
-	            }
+		        function setEditingMode(isEditing) {
+	            document.body.classList.toggle('is-editing', isEditing);
+	            document.querySelectorAll(editableSelector).forEach((el) => {
+	                el.setAttribute('contenteditable', isEditing ? 'true' : 'false');
+	            });
+		            if (isEditing) {
+		                bindEditingModeListeners();
+		            } else {
+		                unbindEditingModeListeners();
+		                hideHighlightPopup();
+		            }
+		            if (!isEditing) {
+		                clearTimeout(state.saveTimeout);
+		                state.pendingSave = false;
+		            }
 	            const editBtn = document.getElementById('enable-edit-btn');
 	            if (editBtn) editBtn.textContent = isEditing ? 'Exit Editing' : 'Enable Editing';
 	            const resetBtn = document.getElementById('reset-btn');
@@ -1549,187 +1556,220 @@
             selection.addRange(range);
         }
 
-		        function bindEditingListeners() {
-		            if (state.listenersBound) return;
-		            state.listenersBound = true;
+			        function bindBaseListeners() {
+			            if (state.baseListenersBound) return;
+			            state.baseListenersBound = true;
 
-	            document.getElementById('app-root').addEventListener('input', triggerContentUpdate);
-	            document.getElementById('app-root').addEventListener('keyup', (e) => {
-	                if (isSubsectionOrSectionTarget(e.target)) {
-	                    triggerContentUpdate(e);
+		            document.getElementById('app-root').addEventListener('input', triggerContentUpdate);
+		            document.getElementById('app-root').addEventListener('keyup', (e) => {
+		                if (isSubsectionOrSectionTarget(e.target)) {
+		                    triggerContentUpdate(e);
+		                }
+		            });
+		            document.getElementById('main-title').addEventListener('input', (e) => {
+		                document.title = (e.target.textContent || '') || 'Untitled Document';
+		                triggerContentUpdate(e);
+		            });
+		            document.getElementById('help-btn').addEventListener('click', openHelp);
+		            if (els.highlightToggleBtn) {
+		                els.highlightToggleBtn.addEventListener('click', () => {
+		                    setHighlightPanelOpen(els.highlightPanel.hidden);
+		                });
+		            }
+		            document.getElementById('close-help-btn').addEventListener('click', closeHelp);
+		            els.helpModal.addEventListener('click', (e) => {
+		                if (e.target === els.helpModal) closeHelp();
+		            });
+	            document.getElementById('reset-btn').addEventListener('click', openResetModal);
+	            document.getElementById('cancel-reset-btn').addEventListener('click', closeResetModal);
+	            document.getElementById('confirm-reset-btn').addEventListener('click', resetDocumentNow);
+	            document.getElementById('reset-confirm-input').addEventListener('input', updateResetConfirmState);
+	            document.getElementById('reset-confirm-input').addEventListener('keydown', (e) => {
+	                if (e.key !== 'Enter') return;
+	                e.preventDefault();
+	                if (!document.getElementById('confirm-reset-btn').disabled) {
+	                    resetDocumentNow();
 	                }
 	            });
-	            document.getElementById('main-title').addEventListener('input', (e) => {
-	                document.title = (e.target.textContent || '') || 'Untitled Document';
-	                triggerContentUpdate(e);
-	            });
-	            document.getElementById('help-btn').addEventListener('click', openHelp);
-	            if (els.highlightToggleBtn) {
-	                els.highlightToggleBtn.addEventListener('click', () => {
-	                    setHighlightPanelOpen(els.highlightPanel.hidden);
-	                });
-	            }
-	            document.getElementById('close-help-btn').addEventListener('click', closeHelp);
-	            els.helpModal.addEventListener('click', (e) => {
-	                if (e.target === els.helpModal) closeHelp();
-	            });
-            document.getElementById('reset-btn').addEventListener('click', openResetModal);
-            document.getElementById('cancel-reset-btn').addEventListener('click', closeResetModal);
-            document.getElementById('confirm-reset-btn').addEventListener('click', resetDocumentNow);
-            document.getElementById('reset-confirm-input').addEventListener('input', updateResetConfirmState);
-            document.getElementById('reset-confirm-input').addEventListener('keydown', (e) => {
-                if (e.key !== 'Enter') return;
-                e.preventDefault();
-                if (!document.getElementById('confirm-reset-btn').disabled) {
-                    resetDocumentNow();
-                }
-            });
-	            els.resetModal.addEventListener('click', (e) => {
-	                if (e.target === els.resetModal) closeResetModal();
-	            });
-	            document.getElementById('toc-level-btn').addEventListener('click', () => {
-	                state.tocIncludeEntries = !state.tocIncludeEntries;
-	                localStorage.setItem('toc-include-entries', state.tocIncludeEntries ? '1' : '0');
-	                updateTocToggleLabel();
-	                generateTOC();
-	            });
-	            if (els.entrySearch) {
-	                els.entrySearch.addEventListener('input', applyEntrySearch);
-	                els.entrySearch.addEventListener('keydown', (e) => {
-	                    if (e.key !== 'Escape') return;
-	                    e.preventDefault();
-	                    clearEntrySearch();
-	                });
-	            }
-	            document.getElementById('add-highlight-color-btn').addEventListener('click', () => {
-	                state.highlightPalette.push(defaultHighlightPalette[state.highlightPalette.length % defaultHighlightPalette.length]);
-	                persistHighlightPalette();
-	                renderHighlightPaletteEditor();
-	                renderHighlightPopup();
-	            });
+		            els.resetModal.addEventListener('click', (e) => {
+		                if (e.target === els.resetModal) closeResetModal();
+		            });
+		            document.getElementById('toc-level-btn').addEventListener('click', () => {
+		                state.tocIncludeEntries = !state.tocIncludeEntries;
+		                localStorage.setItem('toc-include-entries', state.tocIncludeEntries ? '1' : '0');
+		                updateTocToggleLabel();
+		                generateTOC();
+		            });
+		            if (els.entrySearch) {
+		                els.entrySearch.addEventListener('input', applyEntrySearch);
+		                els.entrySearch.addEventListener('keydown', (e) => {
+		                    if (e.key !== 'Escape') return;
+		                    e.preventDefault();
+		                    clearEntrySearch();
+		                });
+		            }
+		            document.getElementById('add-highlight-color-btn').addEventListener('click', () => {
+		                state.highlightPalette.push(defaultHighlightPalette[state.highlightPalette.length % defaultHighlightPalette.length]);
+		                persistHighlightPalette();
+		                renderHighlightPaletteEditor();
+		                renderHighlightPopup();
+		            });
+		            document.addEventListener('keydown', onGlobalKeydown);
+		        }
 
-            // Force rich paste/drop content into plain text to prevent structural HTML injection.
-            document.addEventListener('paste', (e) => {
-                if (!document.body.classList.contains('is-editing')) return;
-                const editableTarget = e.target.closest('[contenteditable="true"]');
-                if (!editableTarget) return;
+		        function onGlobalKeydown(e) {
+		            if (!els.helpModal.hidden && e.key === 'Escape') {
+		                e.preventDefault();
+		                closeHelp();
+		                return;
+		            }
+		            if (!els.resetModal.hidden && e.key === 'Escape') {
+		                e.preventDefault();
+		                closeResetModal();
+		            }
+		        }
 
-                e.preventDefault();
-                if (isTextEditorTarget(editableTarget)) {
-                    const html = (e.clipboardData || window.clipboardData).getData('text/html');
-                    if (html) {
-                        insertFragmentAtCursor(sanitizeHtmlToFragment(html));
-                    } else {
-                        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-                        insertPlainText(text);
-                    }
-                } else {
-                    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-                    insertPlainText(text);
-                }
-	                triggerContentUpdate({ target: editableTarget });
-            });
+		        function bindEditingModeListeners() {
+		            if (state.editingListenersController) return;
+		            const ac = new AbortController();
+		            state.editingListenersController = ac;
+		            const signal = ac.signal;
 
-		            document.addEventListener('drop', (e) => {
-		                if (!document.body.classList.contains('is-editing')) return;
-		                if (state.tocDragState) return; // preserve TOC drag-and-drop behavior
+	            // Force rich paste/drop content into plain text to prevent structural HTML injection.
+	            document.addEventListener('paste', onEditingPaste, { signal });
+	            document.addEventListener('drop', onEditingDrop, { signal });
+	            document.addEventListener('keydown', onEditingKeydown, { signal });
+	            document.addEventListener('selectionchange', onEditingSelectionChange, { signal });
+	            document.addEventListener('scroll', onEditingScroll, { signal, capture: true });
+	            window.addEventListener('resize', onEditingResize, { signal });
+	            document.addEventListener('mousedown', onEditingMouseDown, { signal });
+	            document.addEventListener('click', onEditingClick, { signal });
+		        }
 
-	                const editableTarget = e.target.closest('[contenteditable="true"]');
-	                if (!editableTarget) return;
+		        function unbindEditingModeListeners() {
+		            if (!state.editingListenersController) return;
+		            state.editingListenersController.abort();
+		            state.editingListenersController = null;
+		        }
 
-                e.preventDefault();
-                editableTarget.focus();
-                if (isTextEditorTarget(editableTarget)) {
-                    const html = (e.dataTransfer && e.dataTransfer.getData('text/html')) || '';
-                    if (html) {
-                        insertFragmentAtCursor(sanitizeHtmlToFragment(html));
-                    } else {
-                        const text = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || '';
-                        insertPlainText(text);
-                    }
-                } else {
-                    const text = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || '';
-                    insertPlainText(text);
-                }
-	                triggerContentUpdate({ target: editableTarget });
-            });
+		        function onEditingPaste(e) {
+		            if (!document.body.classList.contains('is-editing')) return;
+		            const editableTarget = e.target.closest('[contenteditable="true"]');
+		            if (!editableTarget) return;
 
-	            document.addEventListener('keydown', (e) => {
-	                if (!els.helpModal.hidden && e.key === 'Escape') {
-	                    e.preventDefault();
-	                    closeHelp();
-	                    return;
-	                }
-	                if (!els.resetModal.hidden && e.key === 'Escape') {
-	                    e.preventDefault();
-	                    closeResetModal();
-	                    return;
-	                }
+		            e.preventDefault();
+		            if (isTextEditorTarget(editableTarget)) {
+		                const html = (e.clipboardData || window.clipboardData).getData('text/html');
+		                if (html) {
+		                    insertFragmentAtCursor(sanitizeHtmlToFragment(html));
+		                } else {
+		                    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+		                    insertPlainText(text);
+		                }
+		            } else {
+		                const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+		                insertPlainText(text);
+		            }
+		            triggerContentUpdate({ target: editableTarget });
+		        }
 
-                if (!document.body.classList.contains('is-editing')) return;
-                const editableTarget = e.target.closest('[contenteditable="true"]');
-                if (!editableTarget) return;
+		        function onEditingDrop(e) {
+		            if (!document.body.classList.contains('is-editing')) return;
+		            if (state.tocDragState) return; // preserve TOC drag-and-drop behavior
 
-                const isMod = e.ctrlKey || e.metaKey;
-                if (isMod && !e.shiftKey && !e.altKey) {
-                    const key = e.key.toLowerCase();
-	                    if (key === 's') {
-	                        e.preventDefault();
-	                        if (!state.fileHandle) return;
-	                        saveNow();
-	                        return;
-	                    }
+		            const editableTarget = e.target.closest('[contenteditable="true"]');
+		            if (!editableTarget) return;
 
-                    if (key === 'b' || key === 'i') {
-                        e.preventDefault();
-                        if (!isTextEditorTarget(editableTarget)) return;
+		            e.preventDefault();
+		            editableTarget.focus();
+		            if (isTextEditorTarget(editableTarget)) {
+		                const html = (e.dataTransfer && e.dataTransfer.getData('text/html')) || '';
+		                if (html) {
+		                    insertFragmentAtCursor(sanitizeHtmlToFragment(html));
+		                } else {
+		                    const text = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || '';
+		                    insertPlainText(text);
+		                }
+		            } else {
+		                const text = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || '';
+		                insertPlainText(text);
+		            }
+		            triggerContentUpdate({ target: editableTarget });
+		        }
 
-                        document.execCommand(key === 'b' ? 'bold' : 'italic', false, null);
-	                        triggerContentUpdate({ target: editableTarget });
-                        return;
-                    }
-                }
+		        function onEditingKeydown(e) {
+		            if (!document.body.classList.contains('is-editing')) return;
+		            const editableTarget = e.target.closest('[contenteditable="true"]');
+		            if (!editableTarget) return;
 
-                if (e.key === 'Enter' && isTextEditorTarget(editableTarget)) {
-                    e.preventDefault();
-                    insertFragmentAtCursor(document.createElement('br'));
-	                    triggerContentUpdate({ target: editableTarget });
-                    return;
-                }
+		            const isMod = e.ctrlKey || e.metaKey;
+		            if (isMod && !e.shiftKey && !e.altKey) {
+		                const key = e.key.toLowerCase();
+		                if (key === 's') {
+		                    e.preventDefault();
+		                    if (!state.fileHandle) return;
+		                    saveNow();
+		                    return;
+		                }
 
-                if (e.key === 'Enter' && isSubsectionOrSectionTarget(editableTarget)) {
-                    e.preventDefault();
-                    editableTarget.blur();
-	                    triggerContentUpdate({ target: editableTarget });
-                }
-            });
-            document.addEventListener('selectionchange', () => {
-                window.requestAnimationFrame(refreshHighlightPopup);
-            });
-            document.addEventListener('scroll', hideHighlightPopup, true);
-	            window.addEventListener('resize', refreshHighlightPopup);
-	            document.addEventListener('mousedown', (e) => {
-	                if (els.highlightPopup && els.highlightPopup.contains(e.target)) return;
-	                if (e.target.closest('#highlight-panel')) return;
-	                if (e.target.closest('#highlight-toggle-btn')) return;
-	                const mark = e.target.closest('.highlight-mark');
-	                if (mark && document.body.classList.contains('is-editing')) {
-	                    state.highlightTargetMark = mark;
-	                    return;
-	                }
-	                if (!e.target.closest('.text')) {
-	                    state.highlightSelectionRange = null;
-	                    hideHighlightPopup();
-	                }
-	            });
-	            document.addEventListener('click', (e) => {
-	                if (!document.body.classList.contains('is-editing')) return;
-	                if (els.highlightPopup && els.highlightPopup.contains(e.target)) return;
-	                const mark = e.target.closest('.highlight-mark');
-	                if (!mark) return;
-	                showHighlightPopupForMark(mark);
-	            });
-        }
+		                if (key === 'b' || key === 'i') {
+		                    e.preventDefault();
+		                    if (!isTextEditorTarget(editableTarget)) return;
+
+		                    document.execCommand(key === 'b' ? 'bold' : 'italic', false, null);
+		                    triggerContentUpdate({ target: editableTarget });
+		                    return;
+		                }
+		            }
+
+		            if (e.key === 'Enter' && isTextEditorTarget(editableTarget)) {
+		                e.preventDefault();
+		                insertFragmentAtCursor(document.createElement('br'));
+		                triggerContentUpdate({ target: editableTarget });
+		                return;
+		            }
+
+		            if (e.key === 'Enter' && isSubsectionOrSectionTarget(editableTarget)) {
+		                e.preventDefault();
+		                editableTarget.blur();
+		                triggerContentUpdate({ target: editableTarget });
+		            }
+		        }
+
+		        function onEditingSelectionChange() {
+		            window.requestAnimationFrame(refreshHighlightPopup);
+		        }
+
+		        function onEditingScroll() {
+		            hideHighlightPopup();
+		        }
+
+		        function onEditingResize() {
+		            refreshHighlightPopup();
+		        }
+
+		        function onEditingMouseDown(e) {
+		            if (els.highlightPopup && els.highlightPopup.contains(e.target)) return;
+		            if (e.target.closest('#highlight-panel')) return;
+		            if (e.target.closest('#highlight-toggle-btn')) return;
+		            const mark = e.target.closest('.highlight-mark');
+		            if (mark && document.body.classList.contains('is-editing')) {
+		                state.highlightTargetMark = mark;
+		                return;
+		            }
+		            if (!e.target.closest('.text')) {
+		                state.highlightSelectionRange = null;
+		                hideHighlightPopup();
+		            }
+		        }
+
+		        function onEditingClick(e) {
+		            if (!document.body.classList.contains('is-editing')) return;
+		            if (els.highlightPopup && els.highlightPopup.contains(e.target)) return;
+		            const mark = e.target.closest('.highlight-mark');
+		            if (!mark) return;
+		            showHighlightPopupForMark(mark);
+		        }
 
         function buildSavableHtml() {
             const snapshot = document.documentElement.cloneNode(true);
@@ -1808,9 +1848,9 @@
 	            if (btn && !state.isUnsupportedBrowser) btn.removeAttribute('style');
 	            removeLegacyContentDragHandles(document.getElementById('app-root'));
             
-            bindEditingListeners();
-            generateTOC();
-            applyEntrySearch();
+	            bindBaseListeners();
+	            generateTOC();
+	            applyEntrySearch();
 
             // If this file is already being edited in another tab, surface an early warning in read-only mode.
             try {
