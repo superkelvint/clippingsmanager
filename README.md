@@ -132,6 +132,8 @@ Editing and saving depend on the browser File System Access API. In practice, th
 
 - [`clippings.html`](clippings.html): the complete application, UI, logic, and stored document content
 - [`clippings-migrate.py`](clippings-migrate.py): a zero-dependency Python script for migrating notes between versions
+- [`src/clippings.js`](src/clippings.js): source-of-truth JavaScript (merged into `clippings.html` on commit)
+- [`scripts/build-singlefile.mjs`](scripts/build-singlefile.mjs): merges `src/clippings.js` into `clippings.html`
 
 ## Typical Use
 
@@ -144,7 +146,9 @@ Editing and saving depend on the browser File System Access API. In practice, th
 
 ## No Setup
 
-There are no dependencies, no server, and no build step. Once you have the HTML file on your computer, the app works fully offline and keeps your notes in that local file.
+For end users: there are no dependencies, no server, and no build step. Once you have the HTML file on your computer, the app works fully offline and keeps your notes in that local file.
+
+For development: JavaScript lives in `src/clippings.js` and is merged into `clippings.html` by the pre-commit hook (and can be run manually via `node scripts/build-singlefile.mjs`).
 
 ## Tests (Developer)
 
@@ -164,3 +168,5 @@ This repo includes a versioned hook in `.githooks/`. Enable it once per clone:
 ```bash
 git config core.hooksPath .githooks
 ```
+
+The hook rebuilds `clippings.html` from `src/clippings.js` and stages it automatically, then runs tests.
