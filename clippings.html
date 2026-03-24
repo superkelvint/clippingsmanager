@@ -2,7 +2,7 @@
 <html lang="en" style="scroll-behavior: auto !important;"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="clippings-build-sha" content="7eaf765ea1903231eb04afa570a80dc3880a6d8a">
+    <meta name="clippings-build-sha" content="59308c9542b68b4b77ccc4be4873793d2417fe44">
     <meta name="clippings-upstream-html" content="https://raw.githubusercontent.com/superkelvint/clippingsmanager/refs/heads/main/clippings.html">
     <title>Clippings Manager</title>
     <style>
@@ -882,6 +882,10 @@
 
         async function maybePromptForUpdate() {
             if (state.isUnsupportedBrowser) return;
+            // Playwright/WebDriver runs should never hit the network for update checks; it slows tests
+            // and can fail in sandboxed environments. Self-update tests can opt-in explicitly.
+            const isWebDriver = !!(navigator && navigator.webdriver);
+            if (isWebDriver && !(window && window.__clippings_test_enable_update_check)) return;
             const upstreamUrl = getUpstreamHtmlUrlFromDom();
             if (!upstreamUrl) return;
 

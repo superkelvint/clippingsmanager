@@ -163,6 +163,10 @@
 
         async function maybePromptForUpdate() {
             if (state.isUnsupportedBrowser) return;
+            // Playwright/WebDriver runs should never hit the network for update checks; it slows tests
+            // and can fail in sandboxed environments. Self-update tests can opt-in explicitly.
+            const isWebDriver = !!(navigator && navigator.webdriver);
+            if (isWebDriver && !(window && window.__clippings_test_enable_update_check)) return;
             const upstreamUrl = getUpstreamHtmlUrlFromDom();
             if (!upstreamUrl) return;
 

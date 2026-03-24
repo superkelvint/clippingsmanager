@@ -25,6 +25,7 @@ test('self-update: "Not now" ignores that upstream commit globally', async ({ pa
   try {
     await addInitShims(page);
     await page.addInitScript((htmlText) => {
+      window.__clippings_test_enable_update_check = true;
       window.fetch = async () => ({
         ok: true,
         status: 200,
@@ -69,6 +70,7 @@ test('self-update: Update merges user content into upstream template', async ({ 
 
     await addInitShims(page);
     await page.addInitScript((htmlText) => {
+      window.__clippings_test_enable_update_check = true;
       window.__clippings_test_disable_reload = true;
       window.fetch = async () => ({
         ok: true,
@@ -97,4 +99,3 @@ test('self-update: Update merges user content into upstream template', async ({ 
     temp.cleanup();
   }
 });
-

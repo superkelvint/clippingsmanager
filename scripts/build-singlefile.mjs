@@ -11,6 +11,7 @@ const jsPath = path.join(rootDir, 'src', 'clippings.js');
 const beginMarker = '/* BEGIN_INLINE:src/clippings.js */';
 const endMarker = '/* END_INLINE */';
 const buildShaPlaceholder = '__CLIPPINGS_BUILD_SHA__';
+const buildShaMetaRe = /(<meta\s+name=["']clippings-build-sha["']\s+content=["'])([^"']*)(["']\s*\/?>)/i;
 
 function normalizeNewlines(text) {
   return text.replace(/\r\n/g, '\n');
@@ -37,7 +38,14 @@ function main() {
   const jsRaw = fs.readFileSync(jsPath, 'utf8');
 
   const buildSha = getGitSha();
-  const html = normalizeNewlines(htmlRaw).replaceAll(buildShaPlaceholder, buildSha);
+  const htmlOriginal = normalizeNewlines(htmlRaw);
+  let html = htmlOriginal;
+  // Keep supporting the placeholder (first-time insertion), but also continuously update the meta tag
+  // on subsequent builds after the placeholder has been replaced.
+  html = html.replaceAll(buildShaPlaceholder, buildSha);
+  if (buildShaMetaRe.test(html)) {
+    html = html.replace(buildShaMetaRe, `$1${buildSha}$3`);
+  }
   const js = escapeScriptClose(normalizeNewlines(jsRaw));
 
   const beginIdx = html.indexOf(beginMarker);
@@ -53,7 +61,7 @@ function main() {
     js +
     html.slice(endIdx);
 
-  if (nextHtml === html) return;
+  if (nextHtml === htmlOriginal) return;
   fs.writeFileSync(htmlPath, nextHtml, 'utf8');
 }
 
