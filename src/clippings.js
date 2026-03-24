@@ -7,6 +7,7 @@
 	            updateCurrentSha: document.getElementById('update-current-sha'),
 	            updateLatestSha: document.getElementById('update-latest-sha'),
 	            updateChangelog: document.getElementById('update-changelog'),
+	            updateChangelogTitle: document.getElementById('update-changelog-title'),
 	            updateChangelogList: document.getElementById('update-changelog-list'),
 	            updateNowBtn: document.getElementById('update-now-btn'),
 	            updateNotNowBtn: document.getElementById('update-not-now-btn'),
@@ -35,6 +36,7 @@
 		            tocRegenRaf: null,
 		            updateCandidateSha: '',
 		            updateCandidateHtml: '',
+		            updateCandidateCommitSha: '',
 
 	            editLockKey: null,
 	            editLockHeartbeat: null,
@@ -45,6 +47,7 @@
         const editableSelector = '[contenteditable]';
         const defaultHighlightPalette = ['#facc15', '#86efac', '#93c5fd'];
         const UPDATE_IGNORE_SHA_KEY = 'clippings-update-ignore-sha';
+        const LAST_UPDATED_COMMIT_KEY = 'clippings-last-updated-commit';
         const editSessionId = (window.crypto && typeof window.crypto.randomUUID === 'function')
             ? window.crypto.randomUUID()
             : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -75,9 +78,27 @@
             return getMetaContent('clippings-upstream-commits-api');
         }
 
+        function getUpstreamCompareApiPrefixFromDom() {
+            return getMetaContent('clippings-upstream-compare-api-prefix');
+        }
+
         function shortSha(sha) {
             const s = (sha || '').trim();
             return s.length > 10 ? s.slice(0, 10) : (s || 'unknown');
+        }
+
+        function getLastUpdatedCommitSha() {
+            try {
+                return (localStorage.getItem(LAST_UPDATED_COMMIT_KEY) || '').trim();
+            } catch {
+                return '';
+            }
+        }
+
+        function setLastUpdatedCommitSha(sha) {
+            try {
+                localStorage.setItem(LAST_UPDATED_COMMIT_KEY, String(sha || '').trim());
+            } catch {}
         }
 
         function getIgnoredUpdateSha() {
@@ -137,7 +158,7 @@
             }
         }
 
-        function renderUpdateChangelog(commits, { latestSha, currentSha }) {
+        function renderUpdateChangelog(commits, { title }) {
             if (!els.updateChangelog || !els.updateChangelogList) return;
             if (!Array.isArray(commits) || commits.length === 0) return;
 
@@ -151,11 +172,12 @@
             }
             if (items.length === 0) return;
 
-            // Show commits from latest down to (but excluding) the current build SHA if it appears.
-            let cutoffIdx = items.findIndex((c) => c.sha === currentSha);
-            if (cutoffIdx === -1) cutoffIdx = Math.min(items.length, 5);
-            const toShow = items.slice(0, Math.max(0, cutoffIdx));
+            const toShow = items.slice(0, 12);
             if (toShow.length === 0) return;
+
+            if (els.updateChangelogTitle && title) {
+                els.updateChangelogTitle.textContent = String(title);
+            }
 
             els.updateChangelogList.innerHTML = '';
             for (const c of toShow) {
@@ -251,7 +273,23 @@
             if (!commitsApiUrl) return;
             try {
                 const commits = await fetchJsonWithTimeout(commitsApiUrl, 6000);
-                renderUpdateChangelog(commits, { latestSha, currentSha });
+                const latestCommitSha = commits && commits[0] && commits[0].sha ? String(commits[0].sha).trim() : '';
+                state.updateCandidateCommitSha = latestCommitSha;
+
+                const baseCommitSha = getLastUpdatedCommitSha();
+                const comparePrefix = getUpstreamCompareApiPrefixFromDom();
+                if (baseCommitSha && latestCommitSha && comparePrefix && baseCommitSha !== latestCommitSha) {
+                    const compareUrl = `${comparePrefix}${encodeURIComponent(baseCommitSha)}...${encodeURIComponent(latestCommitSha)}`;
+                    const compare = await fetchJsonWithTimeout(compareUrl, 6000);
+                    if (compare && Array.isArray(compare.commits) && compare.commits.length) {
+                        renderUpdateChangelog(compare.commits.slice().reverse(), {
+                            title: 'What changed since your last update'
+                        });
+                        return;
+                    }
+                }
+
+                renderUpdateChangelog(commits, { title: 'Recent commits' });
             } catch {}
         }
 
@@ -259,6 +297,7 @@
             if (!state.updateCandidateSha || !state.updateCandidateHtml) return;
 
             const latestSha = state.updateCandidateSha;
+            const latestCommitSha = state.updateCandidateCommitSha;
             closeUpdateModal();
             els.status.textContent = 'Updating template...';
 
@@ -285,6 +324,10 @@
                 const writable = await state.fileHandle.createWritable();
                 await writable.write(merged);
                 await writable.close();
+
+                if (latestCommitSha) {
+                    setLastUpdatedCommitSha(latestCommitSha);
+                }
 
                 els.status.textContent = `Updated to ${shortSha(latestSha)}. Reloading...`;
                 const disableReload = !!(window && window.__clippings_test_disable_reload);

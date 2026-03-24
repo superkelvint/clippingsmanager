@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const scriptPath = fileURLToPath(import.meta.url);
@@ -22,22 +22,28 @@ function escapeScriptClose(js) {
   return js.replace(/<\/script>/gi, '<\\/script>');
 }
 
-function getGitSha() {
-  try {
-    const sha = execSync('git rev-parse HEAD', { cwd: rootDir, stdio: ['ignore', 'pipe', 'ignore'] })
-      .toString('utf8')
-      .trim();
-    return sha || 'unknown';
-  } catch {
-    return 'unknown';
-  }
+function sha256Hex(text) {
+  return crypto.createHash('sha256').update(String(text), 'utf8').digest('hex');
+}
+
+function computeBuildId({ html, js }) {
+  // Build id should reflect template source (HTML skeleton + src JS), not the git commit SHA.
+  // This stays stable across commits/builds unless the actual template/JS changes.
+  const beginIdx = html.indexOf(beginMarker);
+  const endIdx = beginIdx === -1 ? -1 : html.indexOf(endMarker, beginIdx + beginMarker.length);
+  const skeleton =
+    beginIdx === -1 || endIdx === -1 || endIdx <= beginIdx
+      ? html
+      : html.slice(0, beginIdx) + beginMarker + html.slice(endIdx);
+
+  return sha256Hex(normalizeNewlines(skeleton) + '\n' + normalizeNewlines(js));
 }
 
 function main() {
   const htmlRaw = fs.readFileSync(htmlPath, 'utf8');
   const jsRaw = fs.readFileSync(jsPath, 'utf8');
 
-  const buildSha = getGitSha();
+  const buildSha = computeBuildId({ html: htmlRaw, js: jsRaw });
   const htmlOriginal = normalizeNewlines(htmlRaw);
   let html = htmlOriginal;
   // Keep supporting the placeholder (first-time insertion), but also continuously update the meta tag
