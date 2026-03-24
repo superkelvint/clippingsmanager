@@ -26,13 +26,28 @@ test('self-update: "Not now" ignores that upstream commit globally', async ({ pa
     await addInitShims(page);
     await page.addInitScript((htmlText) => {
       window.__clippings_test_enable_update_check = true;
-      window.fetch = async () => ({
-        ok: true,
-        status: 200,
-        async text() {
-          return htmlText;
+      window.fetch = async (url) => {
+        const u = String(url || '');
+        if (u.includes('api.github.com')) {
+          return {
+            ok: true,
+            status: 200,
+            async json() {
+              return [
+                { sha: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef', commit: { message: 'New stuff\n\nBody' } },
+                { sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', commit: { message: 'Older change' } },
+              ];
+            }
+          };
         }
-      });
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return htmlText;
+          }
+        };
+      };
     }, upstreamHtml);
 
     await page.goto(fileUrl(temp.path));
@@ -72,13 +87,27 @@ test('self-update: Update merges user content into upstream template', async ({ 
     await page.addInitScript((htmlText) => {
       window.__clippings_test_enable_update_check = true;
       window.__clippings_test_disable_reload = true;
-      window.fetch = async () => ({
-        ok: true,
-        status: 200,
-        async text() {
-          return htmlText;
+      window.fetch = async (url) => {
+        const u = String(url || '');
+        if (u.includes('api.github.com')) {
+          return {
+            ok: true,
+            status: 200,
+            async json() {
+              return [
+                { sha: 'feedfacefeedfacefeedfacefeedfacefeedface', commit: { message: 'Template update' } },
+              ];
+            }
+          };
         }
-      });
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return htmlText;
+          }
+        };
+      };
     }, upstreamHtml);
 
     await page.goto(fileUrl(temp.path));

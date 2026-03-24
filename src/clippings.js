@@ -6,6 +6,8 @@
 	            updateModal: document.getElementById('update-modal'),
 	            updateCurrentSha: document.getElementById('update-current-sha'),
 	            updateLatestSha: document.getElementById('update-latest-sha'),
+	            updateChangelog: document.getElementById('update-changelog'),
+	            updateChangelogList: document.getElementById('update-changelog-list'),
 	            updateNowBtn: document.getElementById('update-now-btn'),
 	            updateNotNowBtn: document.getElementById('update-not-now-btn'),
 	            highlightPopup: document.getElementById('highlight-popup'),
@@ -69,6 +71,10 @@
             return getMetaContent('clippings-upstream-html');
         }
 
+        function getUpstreamCommitsApiUrlFromDom() {
+            return getMetaContent('clippings-upstream-commits-api');
+        }
+
         function shortSha(sha) {
             const s = (sha || '').trim();
             return s.length > 10 ? s.slice(0, 10) : (s || 'unknown');
@@ -97,6 +103,7 @@
             if (!els.updateModal) return;
             if (els.updateCurrentSha) els.updateCurrentSha.textContent = shortSha(currentSha);
             if (els.updateLatestSha) els.updateLatestSha.textContent = shortSha(latestSha);
+            if (els.updateChangelog) els.updateChangelog.setAttribute('hidden', '');
             els.updateModal.removeAttribute('hidden');
         }
 
@@ -110,6 +117,58 @@
             } finally {
                 clearTimeout(timeout);
             }
+        }
+
+        async function fetchJsonWithTimeout(url, timeoutMs = 9000) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const res = await fetch(url, {
+                    cache: 'no-store',
+                    signal: controller.signal,
+                    headers: {
+                        'Accept': 'application/vnd.github+json'
+                    }
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            } finally {
+                clearTimeout(timeout);
+            }
+        }
+
+        function renderUpdateChangelog(commits, { latestSha, currentSha }) {
+            if (!els.updateChangelog || !els.updateChangelogList) return;
+            if (!Array.isArray(commits) || commits.length === 0) return;
+
+            const items = [];
+            for (const c of commits) {
+                const sha = (c && c.sha) ? String(c.sha).trim() : '';
+                const msg = c && c.commit && c.commit.message ? String(c.commit.message) : '';
+                const firstLine = msg.split('\n')[0].trim();
+                if (!sha || !firstLine) continue;
+                items.push({ sha, message: firstLine });
+            }
+            if (items.length === 0) return;
+
+            // Show commits from latest down to (but excluding) the current build SHA if it appears.
+            let cutoffIdx = items.findIndex((c) => c.sha === currentSha);
+            if (cutoffIdx === -1) cutoffIdx = Math.min(items.length, 5);
+            const toShow = items.slice(0, Math.max(0, cutoffIdx));
+            if (toShow.length === 0) return;
+
+            els.updateChangelogList.innerHTML = '';
+            for (const c of toShow) {
+                const li = document.createElement('li');
+                const code = document.createElement('code');
+                code.textContent = shortSha(c.sha);
+                const text = document.createTextNode(` ${c.message}`);
+                li.appendChild(code);
+                li.appendChild(text);
+                els.updateChangelogList.appendChild(li);
+            }
+
+            els.updateChangelog.removeAttribute('hidden');
         }
 
         function extractBuildShaFromHtml(htmlText) {
@@ -186,6 +245,14 @@
             state.updateCandidateSha = latestSha;
             state.updateCandidateHtml = upstreamHtml;
             openUpdateModal({ currentSha, latestSha });
+
+            // Best-effort: fetch and render recent commit messages so the user can see what's changed.
+            const commitsApiUrl = getUpstreamCommitsApiUrlFromDom();
+            if (!commitsApiUrl) return;
+            try {
+                const commits = await fetchJsonWithTimeout(commitsApiUrl, 6000);
+                renderUpdateChangelog(commits, { latestSha, currentSha });
+            } catch {}
         }
 
         async function runSelfUpdate() {
