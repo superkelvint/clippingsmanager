@@ -155,6 +155,15 @@ test('highlight: add palette color, apply highlight, recolor, and remove', async
     const markColor1 = await mark.evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(markColor1).toBe('rgb(255, 0, 0)');
 
+    // Changing a palette color should update all existing highlights of that color.
+    await paletteInputs.first().evaluate((el) => {
+      el.value = '#00ff00';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect(mark).toHaveCount(1);
+    const markColorAfterPaletteChange = await mark.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(markColorAfterPaletteChange).toBe('rgb(0, 255, 0)');
+
     // Click mark to get popup with "Unhighlight" and recolor using the second swatch.
     await mark.click();
     await expect(popup).toBeVisible();
@@ -162,7 +171,7 @@ test('highlight: add palette color, apply highlight, recolor, and remove', async
     const secondSwatch = popup.getByTestId('highlight-swatch').nth(1);
     await secondSwatch.dispatchEvent('mousedown');
     const markColor2 = await mark.evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(markColor2).not.toBe(markColor1);
+    expect(markColor2).not.toBe(markColorAfterPaletteChange);
 
     // Remove highlight.
     const unhighlight = popup.getByTestId('highlight-unhighlight');

@@ -827,6 +827,23 @@
             return probe.style.backgroundColor || '';
         }
 
+        function updateAllHighlightsForColor(fromColor, toColor) {
+            const from = normalizeColorValue(fromColor);
+            const to = normalizeColorValue(toColor);
+            if (!from || !to || from === to) return;
+
+            document.querySelectorAll('.highlight-mark').forEach((el) => {
+                const styleColor = normalizeColorValue(el.style.backgroundColor);
+                const dataColor = normalizeColorValue(el.dataset.highlightColor || el.getAttribute('data-highlight-color') || '');
+                const current = styleColor || dataColor;
+                if (!current) return;
+                if (current !== from) return;
+                el.style.backgroundColor = to;
+                el.dataset.highlight = 'true';
+                el.dataset.highlightColor = to;
+            });
+        }
+
 	        function readStoredHighlightPalette() {
 	            try {
 	                const raw = (els.highlightPaletteData && els.highlightPaletteData.textContent) || '';
@@ -976,12 +993,15 @@
                 input.setAttribute('value', color);
 	                input.setAttribute('aria-label', `Highlight color ${index + 1}`);
 	                input.addEventListener('input', (e) => {
+	                    const prevColor = state.highlightPalette[index];
 	                    const nextColor = normalizeColorValue(e.target.value) || defaultHighlightPalette[0];
 	                    state.highlightPalette[index] = nextColor;
 	                    input.setAttribute('value', nextColor);
 	                    preview.style.backgroundColor = nextColor;
+	                    updateAllHighlightsForColor(prevColor, nextColor);
 	                    persistHighlightPalette();
 	                    renderHighlightPopup();
+	                    scheduleAutosave();
 	                });
 
                 const preview = document.createElement('div');
