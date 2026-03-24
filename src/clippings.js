@@ -430,6 +430,7 @@
 		            } else {
 		                unbindEditingModeListeners();
 		                hideHighlightPopup();
+		                setHighlightPanelOpen(false);
 		            }
 		            if (!isEditing) {
 		                clearTimeout(state.saveTimeout);
