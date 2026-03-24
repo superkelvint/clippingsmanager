@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const scriptPath = fileURLToPath(import.meta.url);
@@ -9,6 +10,7 @@ const jsPath = path.join(rootDir, 'src', 'clippings.js');
 
 const beginMarker = '/* BEGIN_INLINE:src/clippings.js */';
 const endMarker = '/* END_INLINE */';
+const buildShaPlaceholder = '__CLIPPINGS_BUILD_SHA__';
 
 function normalizeNewlines(text) {
   return text.replace(/\r\n/g, '\n');
@@ -19,11 +21,23 @@ function escapeScriptClose(js) {
   return js.replace(/<\/script>/gi, '<\\/script>');
 }
 
+function getGitSha() {
+  try {
+    const sha = execSync('git rev-parse HEAD', { cwd: rootDir, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString('utf8')
+      .trim();
+    return sha || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 function main() {
   const htmlRaw = fs.readFileSync(htmlPath, 'utf8');
   const jsRaw = fs.readFileSync(jsPath, 'utf8');
 
-  const html = normalizeNewlines(htmlRaw);
+  const buildSha = getGitSha();
+  const html = normalizeNewlines(htmlRaw).replaceAll(buildShaPlaceholder, buildSha);
   const js = escapeScriptClose(normalizeNewlines(jsRaw));
 
   const beginIdx = html.indexOf(beginMarker);

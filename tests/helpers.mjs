@@ -23,6 +23,10 @@ export function makeTempClippingsCopy(sourcePath) {
 export async function addInitShims(page) {
   await page.addInitScript(() => {
     let storedHtml = '';
+    Object.defineProperty(window, '__clippings_test_lastWrittenHtml', {
+      configurable: true,
+      get: () => storedHtml,
+    });
     const fakeHandle = {
       async queryPermission() {
         return 'granted';
@@ -134,4 +138,3 @@ export async function selectorForTocItem(page, { type, text }) {
   if (!targetId) throw new Error(`Missing data-target-id for TOC item: ${type} ${text}`);
   return `[data-testid="toc"] li[data-testid="toc-item"][data-toc-type="${type}"][data-target-id="${targetId}"]`;
 }
-

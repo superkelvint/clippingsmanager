@@ -3,6 +3,11 @@
 	            status: document.getElementById('save-status'),
 	            helpModal: document.getElementById('help-modal'),
 	            resetModal: document.getElementById('reset-modal'),
+	            updateModal: document.getElementById('update-modal'),
+	            updateCurrentSha: document.getElementById('update-current-sha'),
+	            updateLatestSha: document.getElementById('update-latest-sha'),
+	            updateNowBtn: document.getElementById('update-now-btn'),
+	            updateNotNowBtn: document.getElementById('update-not-now-btn'),
 	            highlightPopup: document.getElementById('highlight-popup'),
 	            highlightPaletteData: document.getElementById('highlight-palette-data'),
 	            highlightPanel: document.getElementById('highlight-panel'),
@@ -26,6 +31,8 @@
 		            highlightTargetMark: null,
 		            tocDragState: null,
 		            tocRegenRaf: null,
+		            updateCandidateSha: '',
+		            updateCandidateHtml: '',
 
 	            editLockKey: null,
 	            editLockHeartbeat: null,
@@ -35,6 +42,7 @@
 
         const editableSelector = '[contenteditable]';
         const defaultHighlightPalette = ['#facc15', '#86efac', '#93c5fd'];
+        const UPDATE_IGNORE_SHA_KEY = 'clippings-update-ignore-sha';
         const editSessionId = (window.crypto && typeof window.crypto.randomUUID === 'function')
             ? window.crypto.randomUUID()
             : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -42,6 +50,183 @@
 	        const EDIT_LOCK_CHANNEL = 'clippings-edit-lock';
 	        const EDIT_LOCK_HEARTBEAT_MS = 4000;
 	        const EDIT_LOCK_STALE_MS = 12000;
+
+        function getMetaContent(name) {
+            const el = document.querySelector(`meta[name="${name}"]`);
+            return el && el.content ? String(el.content).trim() : '';
+        }
+
+        function getBuildShaFromDom(doc = document) {
+            try {
+                const el = doc.querySelector('meta[name="clippings-build-sha"]');
+                return el && el.content ? String(el.content).trim() : '';
+            } catch {
+                return '';
+            }
+        }
+
+        function getUpstreamHtmlUrlFromDom() {
+            return getMetaContent('clippings-upstream-html');
+        }
+
+        function shortSha(sha) {
+            const s = (sha || '').trim();
+            return s.length > 10 ? s.slice(0, 10) : (s || 'unknown');
+        }
+
+        function getIgnoredUpdateSha() {
+            try {
+                return (localStorage.getItem(UPDATE_IGNORE_SHA_KEY) || '').trim();
+            } catch {
+                return '';
+            }
+        }
+
+        function ignoreUpdateSha(sha) {
+            try {
+                localStorage.setItem(UPDATE_IGNORE_SHA_KEY, String(sha || '').trim());
+            } catch {}
+        }
+
+        function closeUpdateModal() {
+            if (!els.updateModal) return;
+            els.updateModal.setAttribute('hidden', '');
+        }
+
+        function openUpdateModal({ currentSha, latestSha }) {
+            if (!els.updateModal) return;
+            if (els.updateCurrentSha) els.updateCurrentSha.textContent = shortSha(currentSha);
+            if (els.updateLatestSha) els.updateLatestSha.textContent = shortSha(latestSha);
+            els.updateModal.removeAttribute('hidden');
+        }
+
+        async function fetchTextWithTimeout(url, timeoutMs = 9000) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const res = await fetch(url, { cache: 'no-store', signal: controller.signal });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.text();
+            } finally {
+                clearTimeout(timeout);
+            }
+        }
+
+        function extractBuildShaFromHtml(htmlText) {
+            try {
+                const doc = new DOMParser().parseFromString(String(htmlText || ''), 'text/html');
+                return getBuildShaFromDom(doc);
+            } catch {
+                return '';
+            }
+        }
+
+        function mergeUserContentIntoTemplate({ currentHtml, upstreamHtml }) {
+            const currentDoc = new DOMParser().parseFromString(String(currentHtml || ''), 'text/html');
+            const upstreamDoc = new DOMParser().parseFromString(String(upstreamHtml || ''), 'text/html');
+
+            const currentTitle = currentDoc.getElementById('main-title');
+            const currentRoot = currentDoc.getElementById('app-root');
+            const currentPalette = currentDoc.getElementById('highlight-palette-data');
+            const currentDocId = currentDoc.querySelector('meta[name="clippings-doc-id"]');
+
+            const upstreamTitle = upstreamDoc.getElementById('main-title');
+            const upstreamRoot = upstreamDoc.getElementById('app-root');
+            const upstreamPalette = upstreamDoc.getElementById('highlight-palette-data');
+
+            if (!upstreamTitle || !upstreamRoot) {
+                throw new Error('Upstream template is missing required elements (#main-title or #app-root).');
+            }
+            if (!currentTitle || !currentRoot) {
+                throw new Error('Current document is missing required elements (#main-title or #app-root).');
+            }
+
+            upstreamTitle.textContent = currentTitle.textContent || '';
+            upstreamRoot.innerHTML = currentRoot.innerHTML;
+
+            if (upstreamPalette && currentPalette) {
+                upstreamPalette.textContent = currentPalette.textContent || '[]';
+            }
+
+            if (currentDocId && currentDocId.content) {
+                let upstreamDocId = upstreamDoc.querySelector('meta[name="clippings-doc-id"]');
+                if (!upstreamDocId) {
+                    upstreamDocId = upstreamDoc.createElement('meta');
+                    upstreamDocId.setAttribute('name', 'clippings-doc-id');
+                    (upstreamDoc.head || upstreamDoc.documentElement).appendChild(upstreamDocId);
+                }
+                upstreamDocId.setAttribute('content', String(currentDocId.content).trim());
+            }
+
+            return '<!DOCTYPE html>\n' + upstreamDoc.documentElement.outerHTML;
+        }
+
+        async function maybePromptForUpdate() {
+            if (state.isUnsupportedBrowser) return;
+            const upstreamUrl = getUpstreamHtmlUrlFromDom();
+            if (!upstreamUrl) return;
+
+            const currentSha = getBuildShaFromDom();
+            let upstreamHtml = '';
+            try {
+                upstreamHtml = await fetchTextWithTimeout(upstreamUrl);
+            } catch {
+                return;
+            }
+
+            const latestSha = extractBuildShaFromHtml(upstreamHtml);
+            if (!latestSha) return;
+            if (latestSha === currentSha) return;
+            if (getIgnoredUpdateSha() === latestSha) return;
+
+            state.updateCandidateSha = latestSha;
+            state.updateCandidateHtml = upstreamHtml;
+            openUpdateModal({ currentSha, latestSha });
+        }
+
+        async function runSelfUpdate() {
+            if (!state.updateCandidateSha || !state.updateCandidateHtml) return;
+
+            const latestSha = state.updateCandidateSha;
+            closeUpdateModal();
+            els.status.textContent = 'Updating template...';
+
+            let lockOk = true;
+            try {
+                if (!state.fileHandle) {
+                    const pickerOptions = {
+                        id: 'clippings-open-file-for-update',
+                        types: [{ description: 'HTML File', accept: { 'text/html': ['.html'] } }],
+                        multiple: false
+                    };
+                    [state.fileHandle] = await window.showOpenFilePicker(pickerOptions);
+                }
+
+                lockOk = await acquireEditLockForHandle(state.fileHandle);
+                if (!lockOk) return;
+
+                const currentSavableHtml = buildSavableHtml();
+                const merged = mergeUserContentIntoTemplate({
+                    currentHtml: currentSavableHtml,
+                    upstreamHtml: state.updateCandidateHtml
+                });
+
+                const writable = await state.fileHandle.createWritable();
+                await writable.write(merged);
+                await writable.close();
+
+                els.status.textContent = `Updated to ${shortSha(latestSha)}. Reloading...`;
+                const disableReload = !!(window && window.__clippings_test_disable_reload);
+                if (!disableReload) {
+                    try { window.location.reload(); } catch {}
+                }
+            } catch (err) {
+                console.error('Update failed:', err);
+                els.status.textContent = 'Update failed (see console).';
+            } finally {
+                try { releaseEditLock(); } catch {}
+            }
+        }
 
 	        function scheduleGenerateTOC() {
 	            if (state.tocRegenRaf) return;
@@ -976,9 +1161,34 @@
 		                renderHighlightPopup();
 		            });
 		            document.addEventListener('keydown', onGlobalKeydown);
+
+		            if (els.updateNowBtn) {
+		                els.updateNowBtn.addEventListener('click', () => {
+		                    runSelfUpdate();
+		                });
+		            }
+		            if (els.updateNotNowBtn) {
+		                els.updateNotNowBtn.addEventListener('click', () => {
+		                    ignoreUpdateSha(state.updateCandidateSha);
+		                    closeUpdateModal();
+		                });
+		            }
+		            if (els.updateModal) {
+		                els.updateModal.addEventListener('click', (e) => {
+		                    if (e.target !== els.updateModal) return;
+		                    ignoreUpdateSha(state.updateCandidateSha);
+		                    closeUpdateModal();
+		                });
+		            }
 		        }
 
 		        function onGlobalKeydown(e) {
+		            if (els.updateModal && !els.updateModal.hidden && e.key === 'Escape') {
+		                e.preventDefault();
+		                ignoreUpdateSha(state.updateCandidateSha);
+		                closeUpdateModal();
+		                return;
+		            }
 		            if (!els.helpModal.hidden && e.key === 'Escape') {
 		                e.preventDefault();
 		                closeHelp();
@@ -1217,6 +1427,7 @@
 	            bindBaseListeners();
 	            generateTOC();
 	            applyEntrySearch();
+	            maybePromptForUpdate();
 
             // If this file is already being edited in another tab, surface an early warning in read-only mode.
             try {
