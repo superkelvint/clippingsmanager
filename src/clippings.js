@@ -37,6 +37,7 @@
 		            updateCandidateSha: '',
 		            updateCandidateHtml: '',
 		            updateCandidateCommitSha: '',
+		            updateCandidateIgnoreToken: '',
 
 	            editLockKey: null,
 	            editLockHeartbeat: null,
@@ -82,9 +83,21 @@
             return getMetaContent('clippings-upstream-compare-api-prefix');
         }
 
+        function getTemplateCommitFromDom() {
+            const sha = getMetaContent('clippings-template-commit');
+            return isLikelyCommitSha(sha) ? sha : '';
+        }
+
         function shortSha(sha) {
             const s = (sha || '').trim();
             return s.length > 10 ? s.slice(0, 10) : (s || 'unknown');
+        }
+
+        function isLikelyCommitSha(value) {
+            const s = String(value || '').trim();
+            if (!s) return false;
+            // Allow short SHAs too.
+            return /^[0-9a-f]{7,40}$/i.test(s);
         }
 
         function getLastUpdatedCommitSha() {
@@ -251,7 +264,7 @@
             const upstreamUrl = getUpstreamHtmlUrlFromDom();
             if (!upstreamUrl) return;
 
-            const currentSha = getBuildShaFromDom();
+            const currentBuildId = getBuildShaFromDom();
             let upstreamHtml = '';
             try {
                 upstreamHtml = await fetchTextWithTimeout(upstreamUrl);
@@ -259,38 +272,49 @@
                 return;
             }
 
-            const latestSha = extractBuildShaFromHtml(upstreamHtml);
-            if (!latestSha) return;
-            if (latestSha === currentSha) return;
-            if (getIgnoredUpdateSha() === latestSha) return;
+            const latestBuildId = extractBuildShaFromHtml(upstreamHtml);
+            if (!latestBuildId) return;
+            if (latestBuildId === currentBuildId) return;
 
-            state.updateCandidateSha = latestSha;
+            state.updateCandidateSha = latestBuildId;
             state.updateCandidateHtml = upstreamHtml;
-            openUpdateModal({ currentSha, latestSha });
 
-            // Best-effort: fetch and render recent commit messages so the user can see what's changed.
+            // Fetch commit log between the current template commit and the latest commit.
             const commitsApiUrl = getUpstreamCommitsApiUrlFromDom();
-            if (!commitsApiUrl) return;
-            try {
-                const commits = await fetchJsonWithTimeout(commitsApiUrl, 6000);
-                const latestCommitSha = commits && commits[0] && commits[0].sha ? String(commits[0].sha).trim() : '';
-                state.updateCandidateCommitSha = latestCommitSha;
+            const comparePrefix = getUpstreamCompareApiPrefixFromDom();
+            const storedBase = getLastUpdatedCommitSha();
+            const baseCommitSha = getTemplateCommitFromDom() || (isLikelyCommitSha(storedBase) ? storedBase : '');
+            let latestCommitSha = '';
+            if (commitsApiUrl) {
+                try {
+                    const commits = await fetchJsonWithTimeout(commitsApiUrl, 6000);
+                    const head = commits && commits[0] && commits[0].sha ? String(commits[0].sha).trim() : '';
+                    latestCommitSha = isLikelyCommitSha(head) ? head : '';
+                } catch {}
+            }
+            state.updateCandidateCommitSha = latestCommitSha;
 
-                const baseCommitSha = getLastUpdatedCommitSha();
-                const comparePrefix = getUpstreamCompareApiPrefixFromDom();
-                if (baseCommitSha && latestCommitSha && comparePrefix && baseCommitSha !== latestCommitSha) {
+            const ignoreToken = latestCommitSha || latestBuildId;
+            state.updateCandidateIgnoreToken = ignoreToken;
+            if (getIgnoredUpdateSha() === ignoreToken) return;
+
+            // Display commit SHAs if available; fall back to build ids.
+            const displayCurrent = baseCommitSha || currentBuildId;
+            const displayLatest = latestCommitSha || latestBuildId;
+            openUpdateModal({ currentSha: displayCurrent, latestSha: displayLatest });
+
+            if (comparePrefix && baseCommitSha && latestCommitSha && baseCommitSha !== latestCommitSha) {
+                try {
                     const compareUrl = `${comparePrefix}${encodeURIComponent(baseCommitSha)}...${encodeURIComponent(latestCommitSha)}`;
                     const compare = await fetchJsonWithTimeout(compareUrl, 6000);
                     if (compare && Array.isArray(compare.commits) && compare.commits.length) {
+                        // GitHub returns commits oldest->newest; show newest first.
                         renderUpdateChangelog(compare.commits.slice().reverse(), {
-                            title: 'What changed since your last update'
+                            title: 'What changed since your version'
                         });
-                        return;
                     }
-                }
-
-                renderUpdateChangelog(commits, { title: 'Recent commits' });
-            } catch {}
+                } catch {}
+            }
         }
 
         async function runSelfUpdate() {
@@ -1284,14 +1308,14 @@
 		            }
 		            if (els.updateNotNowBtn) {
 		                els.updateNotNowBtn.addEventListener('click', () => {
-		                    ignoreUpdateSha(state.updateCandidateSha);
+		                    ignoreUpdateSha(state.updateCandidateIgnoreToken || state.updateCandidateSha);
 		                    closeUpdateModal();
 		                });
 		            }
 		            if (els.updateModal) {
 		                els.updateModal.addEventListener('click', (e) => {
 		                    if (e.target !== els.updateModal) return;
-		                    ignoreUpdateSha(state.updateCandidateSha);
+		                    ignoreUpdateSha(state.updateCandidateIgnoreToken || state.updateCandidateSha);
 		                    closeUpdateModal();
 		                });
 		            }
@@ -1300,7 +1324,7 @@
 		        function onGlobalKeydown(e) {
 		            if (els.updateModal && !els.updateModal.hidden && e.key === 'Escape') {
 		                e.preventDefault();
-		                ignoreUpdateSha(state.updateCandidateSha);
+		                ignoreUpdateSha(state.updateCandidateIgnoreToken || state.updateCandidateSha);
 		                closeUpdateModal();
 		                return;
 		            }

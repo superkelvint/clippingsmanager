@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 
@@ -12,7 +13,9 @@ const jsPath = path.join(rootDir, 'src', 'clippings.js');
 const beginMarker = '/* BEGIN_INLINE:src/clippings.js */';
 const endMarker = '/* END_INLINE */';
 const buildShaPlaceholder = '__CLIPPINGS_BUILD_SHA__';
+const templateCommitPlaceholder = '__CLIPPINGS_TEMPLATE_COMMIT__';
 const buildShaMetaRe = /(<meta\s+name=["']clippings-build-sha["']\s+content=["'])([^"']*)(["']\s*\/?>)/i;
+const templateCommitMetaRe = /(<meta\s+name=["']clippings-template-commit["']\s+content=["'])([^"']*)(["']\s*\/?>)/i;
 
 function normalizeNewlines(text) {
   return text.replace(/\r\n/g, '\n');
@@ -37,7 +40,9 @@ function sanitizeHtmlForBuildId(html) {
   // Ensure the build id doesn't depend on the previous build id.
   // clippings.html is a generated artifact that already contains a value here.
   const normalized = normalizeNewlines(String(html));
-  return normalized.replace(buildShaMetaRe, `$1${buildShaPlaceholder}$3`);
+  return normalized
+    .replace(buildShaMetaRe, `$1${buildShaPlaceholder}$3`)
+    .replace(templateCommitMetaRe, `$1${templateCommitPlaceholder}$3`);
 }
 
 function computeBuildId({ html, js }) {
@@ -54,18 +59,34 @@ function computeBuildId({ html, js }) {
   return sha256Hex(normalizeNewlines(skeleton) + '\n' + normalizeNewlines(js));
 }
 
+function getGitHeadCommitSha() {
+  try {
+    const sha = execSync('git rev-parse HEAD', { cwd: rootDir, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString('utf8')
+      .trim();
+    return sha || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 function main() {
   const htmlRaw = fs.readFileSync(htmlPath, 'utf8');
   const jsRaw = fs.readFileSync(jsPath, 'utf8');
 
   const buildSha = computeBuildId({ html: htmlRaw, js: jsRaw });
+  const templateCommit = getGitHeadCommitSha();
   const htmlOriginal = normalizeNewlines(htmlRaw);
   let html = htmlOriginal;
   // Keep supporting the placeholder (first-time insertion), but also continuously update the meta tag
   // on subsequent builds after the placeholder has been replaced.
   html = html.replaceAll(buildShaPlaceholder, buildSha);
+  html = html.replaceAll(templateCommitPlaceholder, templateCommit);
   if (buildShaMetaRe.test(html)) {
     html = html.replace(buildShaMetaRe, `$1${buildSha}$3`);
+  }
+  if (templateCommitMetaRe.test(html)) {
+    html = html.replace(templateCommitMetaRe, `$1${templateCommit}$3`);
   }
   let js = normalizeNewlines(jsRaw);
   if (shouldMinify()) {
