@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { addInitShims, fileUrl, makeTempClippingsCopy } from './helpers.mjs';
+import { addInitShims, enableEditing, fileUrl, makeTempClippingsCopy } from './helpers.mjs';
 
 function extractBuildSha(html) {
   const match = String(html).match(/<meta\s+name="clippings-build-sha"\s+content="([^"]+)"/i);
@@ -51,6 +51,7 @@ test('self-update: "Not now" ignores that upstream commit globally', async ({ pa
     }, upstreamHtml);
 
     await page.goto(fileUrl(temp.path));
+    await enableEditing(page);
 
     const modal = page.getByTestId('update-modal');
     await expect(modal).toBeVisible();
@@ -111,6 +112,7 @@ test('self-update: Update merges user content into upstream template', async ({ 
     }, upstreamHtml);
 
     await page.goto(fileUrl(temp.path));
+    await enableEditing(page);
     await expect(page.getByTestId('update-modal')).toBeVisible();
 
     await page.getByTestId('update-now-btn').click();

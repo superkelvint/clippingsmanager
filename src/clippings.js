@@ -38,6 +38,7 @@
 		            updateCandidateHtml: '',
 		            updateCandidateCommitSha: '',
 		            updateCandidateIgnoreToken: '',
+		            updateCheckAttempted: false,
 
 	            editLockKey: null,
 	            editLockHeartbeat: null,
@@ -315,6 +316,12 @@
                     }
                 } catch {}
             }
+        }
+
+        async function maybePromptForUpdateOnce() {
+            if (state.updateCheckAttempted) return;
+            state.updateCheckAttempted = true;
+            await maybePromptForUpdate();
         }
 
         async function runSelfUpdate() {
@@ -1586,7 +1593,6 @@
 	            bindBaseListeners();
 	            generateTOC();
 	            applyEntrySearch();
-	            maybePromptForUpdate();
 
             // If this file is already being edited in another tab, surface an early warning in read-only mode.
             try {
@@ -1636,6 +1642,7 @@
 	                if (!lockOk) return;
 
 	                setEditingMode(true);
+	                maybePromptForUpdateOnce();
 
 	                scheduleGenerateTOC();
 	            } catch (err) {
