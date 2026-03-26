@@ -1,0 +1,451 @@
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clippings Manager — Migrator</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0b0f14;
+        --fg: #e6edf3;
+        --muted: #9aa4b2;
+        --card: #111827;
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #60a5fa;
+        --danger: #fb7185;
+        --ok: #34d399;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f7fafc;
+          --fg: #0b1220;
+          --muted: #52607a;
+          --card: #ffffff;
+          --border: rgba(0, 0, 0, 0.12);
+          --accent: #2563eb;
+          --danger: #e11d48;
+          --ok: #059669;
+        }
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      .wrap {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 28px 18px 48px;
+      }
+      header {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        align-items: baseline;
+        margin-bottom: 18px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        letter-spacing: -0.01em;
+      }
+      .sub {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      @media (min-width: 860px) {
+        .grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      input[type="file"] {
+        width: 100%;
+      }
+      input[type="checkbox"] {
+        transform: translateY(1px);
+      }
+      button {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: rgba(96, 165, 250, 0.35);
+        background: rgba(96, 165, 250, 0.12);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .hint {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.45;
+        margin-top: 6px;
+      }
+      .status {
+        margin-top: 14px;
+        font-size: 13px;
+        color: var(--muted);
+        white-space: pre-wrap;
+      }
+      .status b.ok {
+        color: var(--ok);
+      }
+      .status b.bad {
+        color: var(--danger);
+      }
+      .footer {
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 0.95em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Clippings Manager — Migrator</h1>
+        <p class="sub">
+          Upload an older <code>clippings.html</code> notes file and download a
+          migrated copy based on the latest template.
+        </p>
+      </header>
+
+      <div class="card">
+        <div class="grid">
+          <div>
+            <label for="oldFile">Your existing notes HTML (old)</label>
+            <input id="oldFile" type="file" accept=".html,text/html" />
+            <div class="hint">
+              This never uploads your file anywhere; it runs entirely in your
+              browser.
+            </div>
+          </div>
+
+          <div>
+            <label>Template to migrate into (new)</label>
+            <div class="row">
+              <label style="margin: 0">
+                <input id="useSiteTemplate" type="checkbox" checked />
+                Use <code>./clippings.html</code> from this site
+              </label>
+            </div>
+            <div style="margin-top: 10px">
+              <input id="templateFile" type="file" accept=".html,text/html" disabled />
+              <div class="hint">
+                If you are running this from <code>file://</code> (not GitHub
+                Pages), fetch may be blocked. In that case, uncheck the box and
+                select a downloaded latest <code>clippings.html</code>.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top: 14px">
+          <button id="migrateBtn" class="primary" disabled>Migrate and Download</button>
+          <button id="previewBtn" disabled>Preview Output</button>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div class="footer">
+          Migration copies these fields from your old file into the new template:
+          <code>&lt;title&gt;</code>,
+          <code>&lt;h1 id=&quot;main-title&quot;&gt;</code>,
+          <code>&lt;main id=&quot;app-root&quot;&gt;</code>, and
+          <code>&lt;script id=&quot;highlight-palette-data&quot;&gt;</code>.
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const elOldFile = document.getElementById("oldFile");
+        const elTemplateFile = document.getElementById("templateFile");
+        const elUseSiteTemplate = document.getElementById("useSiteTemplate");
+        const elMigrateBtn = document.getElementById("migrateBtn");
+        const elPreviewBtn = document.getElementById("previewBtn");
+        const elStatus = document.getElementById("status");
+
+        const BANG = String.fromCharCode(33);
+        const DOCTYPE = "<" + BANG + "DOCTYPE html>\n";
+
+        let lastOutput = null;
+        let lastOutputName = null;
+
+        function setStatus(lines, kind) {
+          const prefix =
+            kind === "ok"
+              ? '<b class="ok">OK</b> '
+              : kind === "bad"
+                ? '<b class="bad">Error</b> '
+                : "";
+          elStatus.innerHTML =
+            prefix +
+            (Array.isArray(lines)
+              ? lines.join("\n")
+              : String(lines || ""));
+        }
+
+        function escapeRegExp(text) {
+          return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        }
+
+        function getTagInner(html, tagName, tagId) {
+          const id = escapeRegExp(tagId);
+          const tag = escapeRegExp(tagName);
+          const re = new RegExp(
+            `<${tag}[^>]*\\bid\\s*=\\s*["']${id}["'][^>]*>([\\s\\S]*?)<\\/${tag}>`,
+            "i"
+          );
+          const match = re.exec(html);
+          return match ? match[1] : null;
+        }
+
+        function setTagInner(html, tagName, tagId, newInner) {
+          const id = escapeRegExp(tagId);
+          const tag = escapeRegExp(tagName);
+          const re = new RegExp(
+            `(<${tag}[^>]*\\bid\\s*=\\s*["']${id}["'][^>]*>)([\\s\\S]*?)(<\\/${tag}>)`,
+            "i"
+          );
+          return html.replace(re, (full, open, _inner, close) =>
+            open + newInner + close
+          );
+        }
+
+        function getTitle(html) {
+          const re = /<title>([\s\S]*?)<\/title>/i;
+          const match = re.exec(html);
+          return match ? match[1] : null;
+        }
+
+        function setTitle(html, newTitle) {
+          const re = /(<title>)([\s\S]*?)(<\/title>)/i;
+          return html.replace(re, (full, open, _inner, close) =>
+            open + newTitle + close
+          );
+        }
+
+        async function readSiteTemplate() {
+          const resp = await fetch("./clippings.html", { cache: "no-store" });
+          if (resp.ok === false) {
+            throw new Error(`Could not fetch ./clippings.html (HTTP ${resp.status})`);
+          }
+          return await resp.text();
+        }
+
+        function computeOutputName(oldFileName) {
+          const name = oldFileName || "clippings.html";
+          const base = name.toLowerCase().endsWith(".html")
+            ? name.slice(0, -5)
+            : name;
+          return `${base}_migrated.html`;
+        }
+
+        function makeDownload(filename, content) {
+          const blob = new Blob([content], { type: "text/html;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        async function migrateOnce({ oldHtml, templateHtml }) {
+          const fields = [
+            ["h1", "main-title"],
+            ["main", "app-root"],
+            ["script", "highlight-palette-data"],
+          ];
+
+          let migrated = templateHtml;
+          const warnings = [];
+
+          for (const [tag, id] of fields) {
+            const oldInner = getTagInner(oldHtml, tag, id);
+            if (oldInner == null) {
+              warnings.push(
+                `Warning: Could not find ${tag}#${id} in old file (skipped).`
+              );
+              continue;
+            }
+            migrated = setTagInner(migrated, tag, id, oldInner);
+          }
+
+          const oldTitle = getTitle(oldHtml);
+          if (oldTitle == null) {
+            // keep template title
+          } else {
+            migrated = setTitle(migrated, oldTitle);
+          }
+
+          const headSample = migrated.slice(0, 400).toLowerCase();
+          if (headSample.indexOf("doctype html") === -1) {
+            migrated = DOCTYPE + migrated;
+          }
+
+          return { migratedHtml: migrated, warnings };
+        }
+
+        function syncUi() {
+          const haveOld = elOldFile.files && elOldFile.files.length === 1;
+          const usingSite = elUseSiteTemplate.checked;
+          const haveTemplate =
+            usingSite ||
+            (elTemplateFile.files && elTemplateFile.files.length === 1);
+
+          elTemplateFile.disabled = usingSite;
+          elMigrateBtn.disabled = haveOld && haveTemplate ? false : true;
+          elPreviewBtn.disabled = lastOutput == null;
+        }
+
+        async function doMigrate({ download }) {
+          lastOutput = null;
+          lastOutputName = null;
+          syncUi();
+
+          const oldFile = elOldFile.files && elOldFile.files[0];
+          if (oldFile == null) {
+            setStatus("Pick your existing notes HTML first.", "bad");
+            return;
+          }
+
+          setStatus("Reading files...");
+          let oldHtml;
+          let templateHtml;
+          try {
+            oldHtml = await oldFile.text();
+          } catch (err) {
+            setStatus(
+              `Failed to read old file: ${err && err.message ? err.message : String(err)}`,
+              "bad"
+            );
+            return;
+          }
+
+          try {
+            if (elUseSiteTemplate.checked) {
+              templateHtml = await readSiteTemplate();
+            } else {
+              const templateFile =
+                elTemplateFile.files && elTemplateFile.files[0];
+              if (templateFile == null) {
+                setStatus("Pick a template HTML (latest clippings.html).", "bad");
+                return;
+              }
+              templateHtml = await templateFile.text();
+            }
+          } catch (err) {
+            setStatus(
+              [
+                `Failed to load template: ${err && err.message ? err.message : String(err)}`,
+                "",
+                "Tip: Uncheck “Use ./clippings.html from this site” and select a downloaded latest clippings.html.",
+              ],
+              "bad"
+            );
+            return;
+          }
+
+          setStatus("Migrating...");
+          let result;
+          try {
+            result = await migrateOnce({ oldHtml, templateHtml });
+          } catch (err) {
+            setStatus(
+              `Migration failed: ${err && err.message ? err.message : String(err)}`,
+              "bad"
+            );
+            return;
+          }
+
+          lastOutput = result.migratedHtml;
+          lastOutputName = computeOutputName(oldFile.name);
+
+          const statusLines = [`Ready: ${lastOutputName}`, ...result.warnings].filter(
+            Boolean
+          );
+          setStatus(statusLines, "ok");
+
+          syncUi();
+
+          if (download) makeDownload(lastOutputName, lastOutput);
+        }
+
+        elUseSiteTemplate.addEventListener("change", () => {
+          setStatus("");
+          syncUi();
+        });
+        elOldFile.addEventListener("change", () => {
+          setStatus("");
+          lastOutput = null;
+          lastOutputName = null;
+          syncUi();
+        });
+        elTemplateFile.addEventListener("change", () => {
+          setStatus("");
+          lastOutput = null;
+          lastOutputName = null;
+          syncUi();
+        });
+
+        elMigrateBtn.addEventListener("click", async () => {
+          await doMigrate({ download: true });
+        });
+
+        elPreviewBtn.addEventListener("click", () => {
+          if (lastOutput == null) return;
+          const blob = new Blob([lastOutput], { type: "text/html;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          window.open(url, "_blank", "noopener,noreferrer");
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+
+        syncUi();
+      })();
+    </script>
+  </body>
+</html>
