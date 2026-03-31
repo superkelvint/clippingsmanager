@@ -138,6 +138,18 @@
           "Liberation Mono", "Courier New", monospace;
         font-size: 0.95em;
       }
+      .callout {
+        border: 1px solid rgba(52, 211, 153, 0.35);
+        background: rgba(52, 211, 153, 0.08);
+        border-radius: 12px;
+        padding: 12px 12px;
+        margin-bottom: 14px;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .callout b {
+        color: var(--ok);
+      }
     </style>
   </head>
   <body>
@@ -151,13 +163,19 @@
       </header>
 
       <div class="card">
+        <div class="callout">
+          <b>Privacy:</b> <b>NO private data is uploaded to any server.</b> The
+          migration happens completely within your browser. The only network
+          request is fetching the latest <code>clippings.html</code> template
+          from GitHub. If you uncheck that option and select a local template
+          file, there are zero network requests.
+        </div>
         <div class="grid">
           <div>
             <label for="oldFile">Your existing notes HTML (old)</label>
             <input id="oldFile" type="file" accept=".html,text/html" />
             <div class="hint">
-              This never uploads your file anywhere; it runs entirely in your
-              browser.
+              Your file stays on your device — it is never uploaded anywhere.
             </div>
           </div>
 
@@ -166,7 +184,7 @@
             <div class="row">
               <label style="margin: 0">
                 <input id="useSiteTemplate" type="checkbox" checked />
-                Use <code>./clippings.html</code> from this site
+                Use the latest version of <code>clippings.html</code> from GitHub
               </label>
             </div>
             <div style="margin-top: 10px">
@@ -174,7 +192,8 @@
               <div class="hint">
                 If you are running this from <code>file://</code> (not GitHub
                 Pages), fetch may be blocked. In that case, uncheck the box and
-                select a downloaded latest <code>clippings.html</code>.
+                select a downloaded latest <code>clippings.html</code> (and no
+                network request will be made).
               </div>
             </div>
           </div>
@@ -383,7 +402,7 @@
               [
                 `Failed to load template: ${err && err.message ? err.message : String(err)}`,
                 "",
-                "Tip: Uncheck “Use ./clippings.html from this site” and select a downloaded latest clippings.html.",
+                "Tip: Uncheck “Use the latest version of clippings.html from GitHub” and select a downloaded latest clippings.html.",
               ],
               "bad"
             );
