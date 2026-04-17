@@ -105,6 +105,45 @@ test('dragging TOC subsection reorders subsections within a section', async ({ p
   }
 });
 
+test('entry move buttons reorder entries within the same section', async ({ page }, testInfo) => {
+  const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
+  const temp = makeTempClippingsCopy(sourceHtmlPath);
+  try {
+    await addInitShims(page);
+    await page.goto(fileUrl(temp.path));
+    await enableEditing(page);
+
+    await page.getByTestId('add-section').click();
+    const section = page.locator('[data-testid="app-root"] .section').first();
+    await setContentEditableText(section.getByTestId('section-title'), 'S1');
+
+    await section.getByTestId('add-entry').click();
+    await section.getByTestId('add-entry').click();
+    await section.getByTestId('add-entry').click();
+
+    const entries = section.locator(':scope > .entry');
+    await expect(entries).toHaveCount(3);
+
+    await setContentEditableText(entries.nth(0).getByTestId('entry-title'), 'Entry 1');
+    await setContentEditableText(entries.nth(1).getByTestId('entry-title'), 'Entry 2');
+    await setContentEditableText(entries.nth(2).getByTestId('entry-title'), 'Entry 3');
+
+    await expect(entries.nth(0).getByTestId('move-entry-up')).toBeDisabled();
+    await expect(entries.nth(2).getByTestId('move-entry-down')).toBeDisabled();
+
+    await entries.nth(1).getByTestId('move-entry-up').click();
+    await expect(section.locator(':scope > .entry .entry-title')).toHaveText(['Entry 2', 'Entry 1', 'Entry 3']);
+
+    await entries.nth(1).getByTestId('move-entry-down').click();
+    await expect(section.locator(':scope > .entry .entry-title')).toHaveText(['Entry 2', 'Entry 3', 'Entry 1']);
+
+    await section.locator(':scope > .entry').first().getByTestId('move-entry-down').click();
+    await expect(section.locator(':scope > .entry .entry-title')).toHaveText(['Entry 3', 'Entry 2', 'Entry 1']);
+  } finally {
+    temp.cleanup();
+  }
+});
+
 test('highlight: add palette color, apply highlight, recolor, and remove', async ({ page }, testInfo) => {
   const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
   const temp = makeTempClippingsCopy(sourceHtmlPath);

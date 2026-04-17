@@ -1093,6 +1093,7 @@
 
         function enhanceEntries(root = document) {
             root.querySelectorAll('.entry').forEach((entry) => ensureEntryTagUi(entry));
+            syncEntryMoveButtons(root);
             syncTagControls(root);
             refreshKnownTags(root);
         }
@@ -2564,6 +2565,18 @@
 	            return button;
 	        }
 
+	        function createEntryMoveButton(direction, testId) {
+	            const button = document.createElement('button');
+	            button.type = 'button';
+	            button.className = `entry-move-btn entry-move-${direction}`;
+	            button.dataset.moveDirection = direction;
+	            if (testId) button.setAttribute('data-testid', testId);
+	            button.setAttribute('aria-label', direction === 'up' ? 'Move Entry Up' : 'Move Entry Down');
+	            button.title = direction === 'up' ? 'Move entry up' : 'Move entry down';
+	            button.textContent = direction === 'up' ? '↑' : '↓';
+	            return button;
+	        }
+
 	        function createEditableSpan(className, testId, placeholder) {
 	            const span = document.createElement('span');
 	            span.className = className;
@@ -2592,8 +2605,10 @@
 	            toolbar.className = 'item-toolbar';
 
 	            const title = createEditableSpan('entry-title', 'entry-title', 'Title (Auto-generates if empty)');
+	            const moveUp = createEntryMoveButton('up', 'move-entry-up');
+	            const moveDown = createEntryMoveButton('down', 'move-entry-down');
 	            const del = createDeleteButton('entry', 'Delete Entry', 'delete-entry');
-	            toolbar.append(title, del);
+	            toolbar.append(title, moveUp, moveDown, del);
 	            heading.appendChild(toolbar);
 
 	            const source = document.createElement('div');
@@ -2650,6 +2665,87 @@
 	            return section;
 	        }
 
+        function getSiblingEntry(entry, direction) {
+            if (!entry) return null;
+            let sibling = direction === 'up' ? entry.previousElementSibling : entry.nextElementSibling;
+            while (sibling) {
+                if (sibling.classList && sibling.classList.contains('entry')) {
+                    return sibling;
+                }
+                sibling = direction === 'up' ? sibling.previousElementSibling : sibling.nextElementSibling;
+            }
+            return null;
+        }
+
+        function syncEntryMoveButtons(root = document) {
+            root.querySelectorAll('.entry').forEach((entry) => {
+                const upButton = entry.querySelector('.entry-move-up');
+                const downButton = entry.querySelector('.entry-move-down');
+                if (upButton) upButton.disabled = !getSiblingEntry(entry, 'up');
+                if (downButton) downButton.disabled = !getSiblingEntry(entry, 'down');
+            });
+        }
+
+        function animateEntrySwap(entry, sibling, beforeRects) {
+            if (!entry || !sibling || !beforeRects) return;
+
+            const entryAfter = entry.getBoundingClientRect();
+            const siblingAfter = sibling.getBoundingClientRect();
+            const entryDeltaY = beforeRects.entry.top - entryAfter.top;
+            const siblingDeltaY = beforeRects.sibling.top - siblingAfter.top;
+            const animationTargets = [
+                { element: entry, deltaY: entryDeltaY },
+                { element: sibling, deltaY: siblingDeltaY }
+            ].filter(({ deltaY }) => Math.abs(deltaY) > 0.5);
+
+            if (animationTargets.length === 0) return;
+
+            animationTargets.forEach(({ element, deltaY }) => {
+                element.classList.remove('entry-swap-animating');
+                element.style.transition = 'none';
+                element.style.transform = `translateY(${deltaY}px)`;
+            });
+
+            // Force the browser to acknowledge the inverted starting position before we transition back.
+            animationTargets.forEach(({ element }) => void element.offsetHeight);
+
+            requestAnimationFrame(() => {
+                animationTargets.forEach(({ element }) => {
+                    element.classList.add('entry-swap-animating');
+                    element.style.transition = 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 260ms ease';
+                    element.style.transform = 'translateY(0)';
+                });
+            });
+
+            window.setTimeout(() => {
+                animationTargets.forEach(({ element }) => {
+                    element.classList.remove('entry-swap-animating');
+                    element.style.removeProperty('transition');
+                    element.style.removeProperty('transform');
+                });
+            }, 320);
+        }
+
+        function moveEntry(button, direction) {
+            const entry = button.closest('.entry');
+            if (!entry || !entry.parentNode) return false;
+
+            const sibling = getSiblingEntry(entry, direction);
+            if (!sibling) return false;
+            const beforeRects = {
+                entry: entry.getBoundingClientRect(),
+                sibling: sibling.getBoundingClientRect()
+            };
+
+            if (direction === 'up') {
+                entry.parentNode.insertBefore(entry, sibling);
+            } else {
+                entry.parentNode.insertBefore(sibling, entry);
+            }
+            animateEntrySwap(entry, sibling, beforeRects);
+            return true;
+        }
+
 	        function deleteItem(button) {
             const deleteType = button.dataset.deleteType;
             const target = button.closest(deleteType === 'entry' ? '.entry' : deleteType === 'subsection' ? '.subsection-group' : '.section');
@@ -2668,6 +2764,14 @@
 
 	        document.body.addEventListener('click', (e) => {
 	            if (!document.body.classList.contains('is-editing')) return;
+
+            const moveButton = e.target.closest('.entry-move-btn');
+            if (moveButton) {
+                if (moveEntry(moveButton, moveButton.dataset.moveDirection)) {
+                    triggerStructureUpdate();
+                }
+                return;
+            }
 
             const deleteButton = e.target.closest('.delete-btn');
             if (deleteButton) {
