@@ -16,6 +16,9 @@
 	            highlightPanel: document.getElementById('highlight-panel'),
 	            highlightToggleBtn: document.getElementById('highlight-toggle-btn'),
 	            entrySearch: document.getElementById('entry-search'),
+                knownTagOptions: document.getElementById('known-tag-options'),
+                searchTagFilters: document.getElementById('search-tag-filters'),
+                searchTagFiltersHelp: document.getElementById('search-tag-filters-help'),
 	        };
 
 		        const state = {
@@ -38,7 +41,11 @@
 		            updateCandidateHtml: '',
 		            updateCandidateCommitSha: '',
 		            updateCandidateIgnoreToken: '',
-		            updateCheckAttempted: false,
+                    updateCheckAttempted: false,
+                    knownTags: [],
+                    knownTagColorMap: new Map(),
+                    selectedSearchTagKeys: [],
+                    selectedSearchTagMode: 'any',
 
 	            editLockKey: null,
 	            editLockHeartbeat: null,
@@ -48,6 +55,39 @@
 
         const editableSelector = '[contenteditable]';
         const defaultHighlightPalette = ['#facc15', '#86efac', '#93c5fd'];
+        const defaultTagPalette = [
+            { bg: '#fef3c7', border: '#f59e0b', text: '#92400e', removeBg: '#fde68a', removeText: '#78350f' },
+            { bg: '#fee2e2', border: '#f87171', text: '#991b1b', removeBg: '#fecaca', removeText: '#7f1d1d' },
+            { bg: '#ffedd5', border: '#fb923c', text: '#9a3412', removeBg: '#fed7aa', removeText: '#7c2d12' },
+            { bg: '#fef9c3', border: '#eab308', text: '#854d0e', removeBg: '#fde68a', removeText: '#713f12' },
+            { bg: '#ecfccb', border: '#84cc16', text: '#3f6212', removeBg: '#d9f99d', removeText: '#365314' },
+            { bg: '#dcfce7', border: '#4ade80', text: '#166534', removeBg: '#bbf7d0', removeText: '#14532d' },
+            { bg: '#ccfbf1', border: '#2dd4bf', text: '#115e59', removeBg: '#99f6e4', removeText: '#134e4a' },
+            { bg: '#cffafe', border: '#22d3ee', text: '#155e75', removeBg: '#a5f3fc', removeText: '#164e63' },
+            { bg: '#dbeafe', border: '#60a5fa', text: '#1d4ed8', removeBg: '#bfdbfe', removeText: '#1e3a8a' },
+            { bg: '#e0e7ff', border: '#818cf8', text: '#4338ca', removeBg: '#c7d2fe', removeText: '#3730a3' },
+            { bg: '#ede9fe', border: '#a78bfa', text: '#6d28d9', removeBg: '#ddd6fe', removeText: '#5b21b6' },
+            { bg: '#f5f3ff', border: '#c4b5fd', text: '#7c3aed', removeBg: '#e9d5ff', removeText: '#6b21a8' },
+            { bg: '#fae8ff', border: '#e879f9', text: '#a21caf', removeBg: '#f5d0fe', removeText: '#86198f' },
+            { bg: '#fdf2f8', border: '#f472b6', text: '#be185d', removeBg: '#fbcfe8', removeText: '#9d174d' },
+            { bg: '#ffe4e6', border: '#fb7185', text: '#be123c', removeBg: '#fecdd3', removeText: '#9f1239' },
+            { bg: '#fef2f2', border: '#fca5a5', text: '#b91c1c', removeBg: '#fee2e2', removeText: '#991b1b' },
+            { bg: '#fff7ed', border: '#fdba74', text: '#c2410c', removeBg: '#fed7aa', removeText: '#9a3412' },
+            { bg: '#fefce8', border: '#facc15', text: '#a16207', removeBg: '#fde68a', removeText: '#854d0e' },
+            { bg: '#f7fee7', border: '#a3e635', text: '#4d7c0f', removeBg: '#d9f99d', removeText: '#3f6212' },
+            { bg: '#f0fdf4', border: '#86efac', text: '#15803d', removeBg: '#bbf7d0', removeText: '#166534' },
+            { bg: '#ecfdf5', border: '#6ee7b7', text: '#047857', removeBg: '#a7f3d0', removeText: '#065f46' },
+            { bg: '#f0fdfa', border: '#5eead4', text: '#0f766e', removeBg: '#99f6e4', removeText: '#115e59' },
+            { bg: '#ecfeff', border: '#67e8f9', text: '#0e7490', removeBg: '#a5f3fc', removeText: '#155e75' },
+            { bg: '#eff6ff', border: '#93c5fd', text: '#2563eb', removeBg: '#bfdbfe', removeText: '#1d4ed8' },
+            { bg: '#eef2ff', border: '#a5b4fc', text: '#4f46e5', removeBg: '#c7d2fe', removeText: '#4338ca' },
+            { bg: '#f5f3ff', border: '#c4b5fd', text: '#7c3aed', removeBg: '#ddd6fe', removeText: '#6d28d9' },
+            { bg: '#faf5ff', border: '#d8b4fe', text: '#9333ea', removeBg: '#e9d5ff', removeText: '#7e22ce' },
+            { bg: '#fdf4ff', border: '#f0abfc', text: '#a21caf', removeBg: '#f5d0fe', removeText: '#86198f' },
+            { bg: '#fff1f2', border: '#fda4af', text: '#e11d48', removeBg: '#fecdd3', removeText: '#be123c' },
+            { bg: '#f8fafc', border: '#94a3b8', text: '#334155', removeBg: '#e2e8f0', removeText: '#1e293b' }
+        ];
+        const tagPaletteOrder = [0, 8, 16, 24, 4, 12, 20, 28, 2, 10, 18, 26, 6, 14, 22, 29, 1, 9, 17, 25, 5, 13, 21, 27, 3, 11, 19, 23, 7, 15];
         const UPDATE_IGNORE_SHA_KEY = 'clippings-update-ignore-sha';
         const LAST_UPDATED_COMMIT_KEY = 'clippings-last-updated-commit';
         const editSessionId = (window.crypto && typeof window.crypto.randomUUID === 'function')
@@ -488,15 +528,15 @@
 	            }
 	        }
 
-	        function handleLostEditLock(lock) {
+        function handleLostEditLock(lock) {
             stopEditLockHeartbeat();
             // Do not clear the lock; we aren't the owner anymore.
             if (document.body.classList.contains('is-editing')) {
                 setEditingMode(false);
-	            }
-	            const ownerTitle = lock && lock.title ? ` (“${lock.title}”)` : '';
-	            els.status.textContent = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
-	        }
+            }
+            const ownerTitle = lock && lock.title ? ` ("${lock.title}")` : '';
+            els.status.textContent = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
+        }
 
 	        function startEditLockHeartbeat() {
 	            if (state.editLockDisabled) return;
@@ -570,6 +610,10 @@
 	            document.querySelectorAll(editableSelector).forEach((el) => {
 	                el.setAttribute('contenteditable', isEditing ? 'true' : 'false');
 	            });
+                if (!isEditing) {
+                    document.querySelectorAll('.entry').forEach((entry) => setEntryTagEditMode(entry, false, { clearDraft: true }));
+                }
+                syncTagControls(document);
 		            if (isEditing) {
 		                bindEditingModeListeners();
 		            } else {
@@ -614,6 +658,7 @@
                 document.getElementById('main-title').innerHTML = parsedTitle.innerHTML;
                 document.getElementById('app-root').innerHTML = parsedRoot.innerHTML;
                 removeLegacyContentDragHandles(document.getElementById('app-root'));
+                enhanceEntries(document.getElementById('app-root'));
 	                document.title = (parsedTitle.textContent || '').trim() || 'Untitled Document';
 	                state.fileHandle = handle;
 	                generateTOC();
@@ -659,14 +704,481 @@
             root.normalize();
         }
 
-	        function getSearchTerms() {
-	            if (!els.entrySearch) return [];
-	            return els.entrySearch.value
-	                .trim()
-	                .toLowerCase()
-	                .split(/\s+/)
-	                .filter(Boolean);
-	        }
+        function normalizeWhitespace(value) {
+            return String(value || '').replace(/\s+/g, ' ').trim();
+        }
+
+        function normalizeTag(value) {
+            return normalizeWhitespace(value);
+        }
+
+        function normalizeTagKey(value) {
+            return normalizeTag(value).toLowerCase();
+        }
+
+        function parseSearchQuery() {
+            if (!els.entrySearch) {
+                return { plainTerms: [], tagTerms: [], highlightTerms: [] };
+            }
+
+            const plainTerms = [];
+            const tagTerms = [];
+            const highlightTerms = [];
+            const query = String(els.entrySearch.value || '');
+            const tokenRegex = /tag:"([^"]+)"|tag:(\S+)|"([^"]+)"|(\S+)/gi;
+            let match;
+
+            while ((match = tokenRegex.exec(query))) {
+                const quotedTag = match[1];
+                const plainTag = match[2];
+                const quotedPlain = match[3];
+                const plainToken = match[4];
+
+                if (quotedTag || plainTag) {
+                    const rawTag = normalizeTag(quotedTag || plainTag);
+                    const tagKey = normalizeTagKey(rawTag);
+                    if (!tagKey) continue;
+                    tagTerms.push(tagKey);
+                    highlightTerms.push(rawTag);
+                    continue;
+                }
+
+                const plainValue = normalizeWhitespace(quotedPlain || plainToken);
+                if (!plainValue) continue;
+                plainTerms.push(plainValue.toLowerCase());
+                highlightTerms.push(plainValue);
+            }
+
+            return { plainTerms, tagTerms, highlightTerms };
+        }
+
+        function buildTagSearchToken(tag) {
+            const normalized = normalizeTag(tag);
+            if (!normalized) return '';
+            return /\s/.test(normalized) ? `tag:"${normalized}"` : `tag:${normalized}`;
+        }
+
+        function clearSelectedSearchTags() {
+            state.selectedSearchTagKeys = [];
+            state.selectedSearchTagMode = 'any';
+        }
+
+        function updateSelectedSearchTags({ tagKey, useAll = false, toggle = false }) {
+            const normalizedKey = normalizeTagKey(tagKey);
+            if (!normalizedKey) {
+                clearSelectedSearchTags();
+                return;
+            }
+
+            const current = state.selectedSearchTagKeys.slice();
+            const alreadySelected = current.includes(normalizedKey);
+
+            if (toggle) {
+                if (alreadySelected) {
+                    state.selectedSearchTagKeys = current.filter((key) => key !== normalizedKey);
+                    if (state.selectedSearchTagKeys.length <= 1) {
+                        state.selectedSearchTagMode = 'any';
+                    }
+                    return;
+                }
+                state.selectedSearchTagKeys = [...current, normalizedKey];
+                state.selectedSearchTagMode = useAll ? 'all' : 'any';
+                return;
+            }
+
+            if (current.length === 1 && alreadySelected && !useAll) {
+                clearSelectedSearchTags();
+                return;
+            }
+
+            if (useAll) {
+                state.selectedSearchTagKeys = alreadySelected ? current : [...current, normalizedKey];
+                state.selectedSearchTagMode = 'all';
+                return;
+            }
+
+            state.selectedSearchTagKeys = [normalizedKey];
+            state.selectedSearchTagMode = 'any';
+        }
+
+        function hashString(value) {
+            const text = String(value || '');
+            let hash = 0;
+            for (let i = 0; i < text.length; i += 1) {
+                hash = ((hash << 5) - hash) + text.charCodeAt(i);
+                hash |= 0;
+            }
+            return Math.abs(hash);
+        }
+
+        function getTagColorTheme(tag) {
+            const key = normalizeTagKey(tag);
+            const mappedIndex = key && state.knownTagColorMap ? state.knownTagColorMap.get(key) : null;
+            const index = Number.isInteger(mappedIndex)
+                ? mappedIndex
+                : (key ? tagPaletteOrder[hashString(key) % tagPaletteOrder.length] : 0);
+            return {
+                index,
+                ...defaultTagPalette[index]
+            };
+        }
+
+        function rebuildKnownTagColorMap() {
+            const nextMap = new Map();
+            state.knownTags.forEach((tag, index) => {
+                const key = normalizeTagKey(tag);
+                if (!key) return;
+                nextMap.set(key, tagPaletteOrder[index % tagPaletteOrder.length]);
+            });
+            state.knownTagColorMap = nextMap;
+        }
+
+        function applyTagColorTheme(tagEl) {
+            if (!tagEl) return;
+            const tagValue = tagEl.dataset.tagValue || tagEl.textContent || '';
+            const theme = getTagColorTheme(tagValue);
+            tagEl.dataset.tagColorIndex = String(theme.index);
+            tagEl.style.setProperty('--tag-bg', theme.bg);
+            tagEl.style.setProperty('--tag-border', theme.border);
+            tagEl.style.setProperty('--tag-text', theme.text);
+            tagEl.style.setProperty('--tag-remove-bg', theme.removeBg);
+            tagEl.style.setProperty('--tag-remove-text', theme.removeText);
+        }
+
+        function createTagChip(tag) {
+            const chip = document.createElement('span');
+            chip.className = 'entry-tag';
+            chip.setAttribute('data-testid', 'entry-tag');
+            chip.dataset.tagValue = tag;
+            chip.dataset.tagKey = normalizeTagKey(tag);
+
+            const label = document.createElement('span');
+            label.className = 'entry-tag-label';
+            label.setAttribute('data-testid', 'entry-tag-label');
+            label.textContent = tag;
+
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'entry-tag-remove';
+            remove.setAttribute('data-testid', 'entry-tag-remove');
+            remove.setAttribute('aria-label', `Remove tag ${tag}`);
+            remove.textContent = 'x';
+
+            chip.append(label, remove);
+            applyTagColorTheme(chip);
+            return chip;
+        }
+
+        function getEntryTagsContainer(entry) {
+            if (!entry) return null;
+            return entry.querySelector('.entry-tags');
+        }
+
+        function getEntryTagRow(entry) {
+            if (!entry) return null;
+            return entry.querySelector('.entry-tag-row');
+        }
+
+        function getEntryTagInput(entry) {
+            if (!entry) return null;
+            return entry.querySelector('.entry-tag-input');
+        }
+
+        function isEntryTagEditMode(entry) {
+            const row = getEntryTagRow(entry);
+            return !!(row && row.dataset.editingTags === 'true');
+        }
+
+        function getEntryTags(entry) {
+            const container = getEntryTagsContainer(entry);
+            if (!container) return [];
+            return Array.from(container.querySelectorAll('.entry-tag')).map((tagEl) => tagEl.dataset.tagValue || '').filter(Boolean);
+        }
+
+        function collectKnownTags(root = document) {
+            const known = new Map();
+            root.querySelectorAll('.entry-tag').forEach((tagEl) => {
+                const tagValue = normalizeTag(tagEl.dataset.tagValue || tagEl.textContent || '');
+                const tagKey = normalizeTagKey(tagValue);
+                if (!tagKey || known.has(tagKey)) return;
+                known.set(tagKey, tagValue);
+            });
+
+            return Array.from(known.values()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        }
+
+        function collectTagEntryCounts(root = document) {
+            const counts = new Map();
+            root.querySelectorAll('.entry').forEach((entry) => {
+                const seenInEntry = new Set();
+                getEntryTags(entry).forEach((tag) => {
+                    const key = normalizeTagKey(tag);
+                    if (!key || seenInEntry.has(key)) return;
+                    seenInEntry.add(key);
+                    const current = counts.get(key) || { tag, count: 0 };
+                    current.count += 1;
+                    counts.set(key, current);
+                });
+            });
+            return counts;
+        }
+
+        function syncTagControls(root = document) {
+            const isEditing = document.body.classList.contains('is-editing');
+            root.querySelectorAll('.entry-tag-row').forEach((row) => {
+                const isTagEditing = row.dataset.editingTags === 'true';
+                const editToggle = row.querySelector('.entry-tag-edit-toggle');
+                const doneButton = row.querySelector('.entry-tag-done');
+
+                row.dataset.hasTags = row.querySelectorAll('.entry-tag').length > 0 ? 'true' : 'false';
+
+                if (editToggle) {
+                    editToggle.textContent = row.dataset.hasTags === 'true' ? 'Edit Tags' : 'Add Tags';
+                    editToggle.disabled = !isEditing;
+                }
+                if (doneButton) {
+                    doneButton.disabled = !isEditing;
+                }
+
+                row.querySelectorAll('.entry-tag-input, .entry-tag-add, .entry-tag-remove').forEach((el) => {
+                    el.disabled = !isEditing || !isTagEditing;
+                });
+                row.querySelectorAll('.entry-tag').forEach((tagEl) => {
+                    applyTagColorTheme(tagEl);
+                });
+            });
+        }
+
+        function refreshKnownTags(root = document) {
+            state.knownTags = collectKnownTags(root);
+            rebuildKnownTagColorMap();
+            if (!els.knownTagOptions) return;
+
+            els.knownTagOptions.replaceChildren();
+            state.knownTags.forEach((tag) => {
+                const option = document.createElement('option');
+                option.value = tag;
+                els.knownTagOptions.appendChild(option);
+            });
+            renderSearchTagFilters(root);
+        }
+
+        function renderSearchTagFilters(root = document) {
+            if (!els.searchTagFilters) return;
+
+            const counts = collectTagEntryCounts(root);
+            els.searchTagFilters.replaceChildren();
+
+            if (state.knownTags.length === 0) {
+                els.searchTagFilters.hidden = true;
+                if (els.searchTagFiltersHelp) els.searchTagFiltersHelp.hidden = true;
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            state.knownTags
+                .map((tag) => {
+                    const key = normalizeTagKey(tag);
+                    return {
+                        tag,
+                        key,
+                        count: counts.get(key)?.count || 0
+                    };
+                })
+                .filter((item) => item.count > 0)
+                .sort((a, b) => (b.count - a.count) || a.tag.localeCompare(b.tag, undefined, { sensitivity: 'base' }))
+                .forEach((item) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'search-tag-filter';
+                    button.setAttribute('data-testid', 'search-tag-filter');
+                    button.dataset.tagValue = item.tag;
+                    button.dataset.tagKey = item.key;
+                    button.dataset.tagCount = String(item.count);
+                    applyTagColorTheme(button);
+                    if (state.selectedSearchTagKeys.includes(item.key)) {
+                        button.dataset.active = 'true';
+                    }
+                    button.textContent = `${item.tag} (${item.count})`;
+                    fragment.appendChild(button);
+                });
+
+            els.searchTagFilters.appendChild(fragment);
+            els.searchTagFilters.hidden = els.searchTagFilters.childElementCount === 0;
+            const hasSelectedTags = state.selectedSearchTagKeys.length > 0;
+            const selectionMode = !hasSelectedTags
+                ? 'none'
+                : (state.selectedSearchTagMode === 'all' && state.selectedSearchTagKeys.length > 1 ? 'all' : 'any');
+            els.searchTagFilters.dataset.selectionMode = selectionMode;
+            if (els.searchTagFiltersHelp) {
+                els.searchTagFiltersHelp.hidden = els.searchTagFilters.childElementCount === 0;
+                els.searchTagFiltersHelp.dataset.mode = selectionMode;
+                if (selectionMode === 'all') {
+                    els.searchTagFiltersHelp.textContent = 'Filtering by ALL selected tags. Click a selected tag to clear it. Ctrl/Cmd-click adds tags with OR. Shift-click adds tags with AND.';
+                } else if (selectionMode === 'any' && hasSelectedTags) {
+                    els.searchTagFiltersHelp.textContent = 'Filtering by ANY selected tags. Click a selected tag to clear it. Ctrl/Cmd-click adds tags with OR. Shift-click adds tags with AND.';
+                } else {
+                    els.searchTagFiltersHelp.textContent = 'Click a tag to filter. Ctrl/Cmd-click adds tags with OR. Shift-click adds tags with AND.';
+                }
+            }
+        }
+
+        function ensureEntryTagUi(entry) {
+            if (!entry || entry.querySelector('.entry-tag-row')) {
+                syncTagControls(entry || document);
+                return entry;
+            }
+
+            const tagRow = document.createElement('div');
+            tagRow.className = 'entry-tag-row';
+            tagRow.setAttribute('data-testid', 'entry-tag-row');
+
+            const tagLabel = document.createElement('span');
+            tagLabel.className = 'entry-tag-heading';
+            tagLabel.textContent = 'Tags';
+
+            const tags = document.createElement('div');
+            tags.className = 'entry-tags';
+            tags.setAttribute('data-testid', 'entry-tags');
+
+            const controls = document.createElement('div');
+            controls.className = 'entry-tag-controls';
+
+            const editToggle = document.createElement('button');
+            editToggle.type = 'button';
+            editToggle.className = 'entry-tag-edit-toggle';
+            editToggle.setAttribute('data-testid', 'entry-tag-edit-toggle');
+            editToggle.textContent = 'Add Tags';
+
+            const doneButton = document.createElement('button');
+            doneButton.type = 'button';
+            doneButton.className = 'entry-tag-done';
+            doneButton.setAttribute('data-testid', 'entry-tag-done');
+            doneButton.textContent = 'Done';
+
+            const inputRow = document.createElement('div');
+            inputRow.className = 'entry-tag-input-row';
+            inputRow.setAttribute('data-testid', 'entry-tag-input-row');
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'entry-tag-input';
+            input.setAttribute('data-testid', 'entry-tag-input');
+            input.setAttribute('autocomplete', 'off');
+            input.setAttribute('spellcheck', 'false');
+            input.setAttribute('placeholder', 'Add a tag');
+            input.setAttribute('list', 'known-tag-options');
+
+            const addButton = document.createElement('button');
+            addButton.type = 'button';
+            addButton.className = 'entry-tag-add';
+            addButton.setAttribute('data-testid', 'entry-tag-add');
+            addButton.textContent = 'Add Tag';
+
+            controls.append(editToggle, doneButton);
+            inputRow.append(input, addButton);
+            tagRow.dataset.editingTags = 'false';
+            tagRow.append(tagLabel, tags, controls, inputRow);
+
+            const text = entry.querySelector('.text');
+            if (text && text.nextSibling) {
+                entry.insertBefore(tagRow, text.nextSibling);
+            } else {
+                entry.appendChild(tagRow);
+            }
+
+            syncTagControls(tagRow);
+            return entry;
+        }
+
+        function enhanceEntries(root = document) {
+            root.querySelectorAll('.entry').forEach((entry) => ensureEntryTagUi(entry));
+            syncTagControls(root);
+            refreshKnownTags(root);
+        }
+
+        function setEntryTagEditMode(entry, isEditingTags, { focusInput = false, clearDraft = false } = {}) {
+            const row = getEntryTagRow(entry);
+            if (!row) return;
+
+            row.dataset.editingTags = isEditingTags ? 'true' : 'false';
+            const input = getEntryTagInput(entry);
+            if (!isEditingTags && clearDraft && input) {
+                input.value = '';
+            }
+            syncTagControls(entry);
+            if (isEditingTags && focusInput && input) {
+                input.focus();
+            }
+        }
+
+        function setEntryTags(entry, tags, { preserveInput = false } = {}) {
+            ensureEntryTagUi(entry);
+            const container = getEntryTagsContainer(entry);
+            if (!container) return;
+
+            const seen = new Set();
+            const normalizedTags = [];
+            tags.forEach((tag) => {
+                const normalized = normalizeTag(tag);
+                const key = normalizeTagKey(normalized);
+                if (!key || seen.has(key)) return;
+                seen.add(key);
+                normalizedTags.push(normalized);
+            });
+
+            container.replaceChildren(...normalizedTags.map((tag) => createTagChip(tag)));
+            entry.dataset.tags = JSON.stringify(normalizedTags);
+            if (!preserveInput) {
+                const input = getEntryTagInput(entry);
+                if (input) input.value = '';
+            }
+            refreshKnownTags(document);
+            syncTagControls(document);
+        }
+
+        function removeTagFromEntry(entry, tagKey) {
+            const nextTags = getEntryTags(entry).filter((tag) => normalizeTagKey(tag) !== tagKey);
+            setEntryTags(entry, nextTags);
+        }
+
+        function addTagToEntry(entry, rawTag) {
+            if (!entry) return false;
+
+            const normalized = normalizeTag(rawTag);
+            const normalizedKey = normalizeTagKey(normalized);
+            if (!normalizedKey) return false;
+
+            const canonicalTag = state.knownTags.find((tag) => normalizeTagKey(tag) === normalizedKey) || normalized;
+            const currentTags = getEntryTags(entry);
+            if (currentTags.some((tag) => normalizeTagKey(tag) === normalizedKey)) {
+                const input = getEntryTagInput(entry);
+                if (input) input.value = '';
+                return false;
+            }
+
+            setEntryTags(entry, [...currentTags, canonicalTag]);
+            return true;
+        }
+
+        function commitTagInput(entry) {
+            const input = getEntryTagInput(entry);
+            if (!input) return false;
+
+            const rawValue = normalizeTag(input.value);
+            if (!rawValue) {
+                input.value = '';
+                return false;
+            }
+
+            return addTagToEntry(entry, rawValue);
+        }
+
+        function finishTagEditing(entry) {
+            if (!entry) return;
+            setEntryTagEditMode(entry, false, { clearDraft: true });
+            triggerStructureUpdate();
+        }
 
         function escapeRegExp(text) {
             return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -729,36 +1241,75 @@
 
         function applyEntrySearch() {
             clearSearchDecorations(document);
-            const terms = getSearchTerms();
-            const hasTerms = terms.length > 0;
+            const { plainTerms, tagTerms, highlightTerms } = parseSearchQuery();
+            const hasTypedTerms = plainTerms.length > 0 || tagTerms.length > 0;
+            const hasSelectedTagFilters = state.selectedSearchTagKeys.length > 0;
 
             document.querySelectorAll('.entry').forEach((entry) => {
+                ensureEntryTagUi(entry);
+                const titleEl = entry.querySelector('.entry-title');
+                const sourceEl = entry.querySelector('.source');
                 const textEl = entry.querySelector('.text');
-                const haystack = (textEl ? textEl.innerText : '').toLowerCase();
-                const matches = !hasTerms || terms.some((term) => haystack.includes(term));
+                const tagLabelEls = Array.from(entry.querySelectorAll('.entry-tag-label'));
+                const tagValues = getEntryTags(entry);
+                const textHaystack = [
+                    titleEl ? titleEl.innerText : '',
+                    sourceEl ? sourceEl.innerText : '',
+                    textEl ? textEl.innerText : '',
+                    tagValues.join(' ')
+                ].join('\n').toLowerCase();
+                const entryTagKeys = tagValues.map((tag) => normalizeTagKey(tag));
+                const plainMatch = plainTerms.length > 0 && plainTerms.some((term) => textHaystack.includes(term));
+                const tagMatch = tagTerms.length > 0 && tagTerms.some((term) => entryTagKeys.includes(term));
+                const baseMatches = !hasTypedTerms || plainMatch || tagMatch;
+                const selectedTagMatches = !hasSelectedTagFilters || (
+                    state.selectedSearchTagMode === 'all'
+                        ? state.selectedSearchTagKeys.every((term) => entryTagKeys.includes(term))
+                        : state.selectedSearchTagKeys.some((term) => entryTagKeys.includes(term))
+                );
+                const matches = baseMatches && selectedTagMatches;
                 entry.hidden = !matches;
-                if (matches && hasTerms) {
-                    highlightSearchMatches(textEl, terms);
+                if (matches && hasTypedTerms) {
+                    [titleEl, sourceEl, textEl, ...tagLabelEls].forEach((el) => highlightSearchMatches(el, highlightTerms));
                 }
             });
 
             document.querySelectorAll('.subsection-group').forEach((group) => {
                 const hasVisibleEntries = Array.from(group.querySelectorAll(':scope > .entry')).some((entry) => !entry.hidden);
-                group.hidden = hasTerms && !hasVisibleEntries;
+                group.hidden = (hasTypedTerms || hasSelectedTagFilters) && !hasVisibleEntries;
             });
 
             document.querySelectorAll('.section').forEach((section) => {
                 const hasVisibleDirectEntries = Array.from(section.querySelectorAll(':scope > .entry')).some((entry) => !entry.hidden);
                 const hasVisibleSubsections = Array.from(section.querySelectorAll(':scope > .subsection-group')).some((group) => !group.hidden);
-                section.hidden = hasTerms && !hasVisibleDirectEntries && !hasVisibleSubsections;
+                section.hidden = (hasTypedTerms || hasSelectedTagFilters) && !hasVisibleDirectEntries && !hasVisibleSubsections;
             });
+
+            renderSearchTagFilters(document.getElementById('app-root'));
         }
 
 	        function clearEntrySearch() {
-	            if (!els.entrySearch || els.entrySearch.value === '') return;
+	            if (!els.entrySearch) return;
+                const hadSelectedTags = state.selectedSearchTagKeys.length > 0;
+	            if (els.entrySearch.value === '' && !hadSelectedTags) return;
 	            els.entrySearch.value = '';
+                clearSelectedSearchTags();
 	            applyEntrySearch();
 	        }
+
+        function hasActiveEntrySearch() {
+            if (!els.entrySearch) return state.selectedSearchTagKeys.length > 0;
+            return els.entrySearch.value.trim() !== '' || state.selectedSearchTagKeys.length > 0;
+        }
+
+        function applyEntrySearchPreservingScroll() {
+            const scrollX = window.scrollX;
+            const scrollY = window.scrollY;
+            applyEntrySearch();
+            window.requestAnimationFrame(() => {
+                window.scrollTo(scrollX, scrollY);
+            });
+        }
 
 	        function getPageTitleText() {
 	            const titleText = (document.getElementById('main-title').textContent || '').trim();
@@ -797,6 +1348,7 @@
 	            document.getElementById('main-title').textContent = 'Clippings Manager';
 	            document.title = 'Clippings Manager';
 	            document.getElementById('app-root').replaceChildren();
+                refreshKnownTags(document.getElementById('app-root'));
 	            closeResetModal();
 	            triggerStructureUpdate();
 	        }
@@ -832,6 +1384,22 @@
             probe.style.backgroundColor = '';
             probe.style.backgroundColor = rawColor || '';
             return probe.style.backgroundColor || '';
+        }
+
+        function colorValueForColorInput(rawColor) {
+            const normalized = normalizeColorValue(rawColor);
+            if (!normalized) return defaultHighlightPalette[0];
+
+            const hexMatch = normalized.match(/^#([0-9a-f]{6})$/i);
+            if (hexMatch) {
+                return `#${hexMatch[1].toLowerCase()}`;
+            }
+
+            const rgbMatch = normalized.match(/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
+            if (!rgbMatch) return defaultHighlightPalette[0];
+
+            const toHex = (value) => Number(value).toString(16).padStart(2, '0');
+            return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`;
         }
 
         function updateAllHighlightsForColor(fromColor, toColor) {
@@ -873,19 +1441,20 @@
 	        }
 
 	        function createHighlightPopupSwatch(color) {
+            const normalized = normalizeColorValue(color) || normalizeColorValue(defaultHighlightPalette[0]);
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'highlight-popup-swatch';
             button.setAttribute('data-testid', 'highlight-swatch');
-            button.dataset.color = normalizeColorValue(color);
-            button.title = `Apply ${color} highlight`;
-            button.style.backgroundColor = color;
+            button.dataset.color = normalized;
+            button.title = `Apply ${normalized} highlight`;
+            button.style.backgroundColor = normalized;
 	            button.addEventListener('mousedown', (e) => {
 	                e.preventDefault();
 	                if (state.highlightTargetMark) {
-	                    applyColorToActiveHighlight(color);
+	                    applyColorToActiveHighlight(normalized);
 	                } else {
-	                    applyHighlight(color);
+	                    applyHighlight(normalized);
 	                }
 	            });
             return button;
@@ -989,6 +1558,7 @@
 
 	            list.replaceChildren();
 	            state.highlightPalette.forEach((color, index) => {
+                const inputValue = colorValueForColorInput(color);
                 const row = document.createElement('div');
                 row.className = 'palette-row';
 
@@ -996,14 +1566,16 @@
                 input.type = 'color';
                 input.className = 'palette-color-input';
                 input.setAttribute('data-testid', 'palette-color-input');
-                input.value = color;
-                input.setAttribute('value', color);
+                input.value = inputValue;
+                input.setAttribute('value', inputValue);
 	                input.setAttribute('aria-label', `Highlight color ${index + 1}`);
 	                input.addEventListener('input', (e) => {
 	                    const prevColor = state.highlightPalette[index];
-	                    const nextColor = normalizeColorValue(e.target.value) || defaultHighlightPalette[0];
+	                    const nextColor = normalizeColorValue(e.target.value) || normalizeColorValue(input.value) || normalizeColorValue(prevColor) || normalizeColorValue(defaultHighlightPalette[0]);
 	                    state.highlightPalette[index] = nextColor;
-	                    input.setAttribute('value', nextColor);
+	                    const nextInputValue = colorValueForColorInput(nextColor);
+	                    input.value = nextInputValue;
+	                    input.setAttribute('value', nextInputValue);
 	                    preview.style.backgroundColor = nextColor;
 	                    updateAllHighlightsForColor(prevColor, nextColor);
 	                    persistHighlightPalette();
@@ -1272,7 +1844,48 @@
 			            if (state.baseListenersBound) return;
 			            state.baseListenersBound = true;
 
-		            document.getElementById('app-root').addEventListener('input', triggerContentUpdate);
+                    const appRoot = document.getElementById('app-root');
+		            appRoot.addEventListener('input', (e) => {
+                        if (e.target && e.target.classList && e.target.classList.contains('entry-tag-input')) {
+                            return;
+                        }
+                        triggerContentUpdate(e);
+                    });
+                    appRoot.addEventListener('keydown', (e) => {
+                        if (!(e.target && e.target.classList && e.target.classList.contains('entry-tag-input'))) return;
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            const entry = e.target.closest('.entry');
+                            if (!entry) return;
+                            setEntryTagEditMode(entry, false, { clearDraft: true });
+                            return;
+                        }
+                        if (e.key !== 'Enter' && e.key !== ',') return;
+                        const entry = e.target.closest('.entry');
+                        if (!entry) return;
+                        if (e.key === ',') {
+                            e.preventDefault();
+                            if (commitTagInput(entry)) {
+                                triggerStructureUpdate();
+                            }
+                            return;
+                        }
+                        window.requestAnimationFrame(() => {
+                            if (!isEntryTagEditMode(entry)) return;
+                            if (commitTagInput(entry)) {
+                                triggerStructureUpdate();
+                            }
+                        });
+                    });
+                    appRoot.addEventListener('focusout', (e) => {
+                        if (!(e.target && e.target.classList && e.target.classList.contains('entry-tag-input'))) return;
+                        const entry = e.target.closest('.entry');
+                        if (!entry || !isEntryTagEditMode(entry)) return;
+                        const nextTarget = e.relatedTarget;
+                        if (nextTarget && entry.contains(nextTarget)) return;
+                        if ((e.target.value || '').trim() !== '') return;
+                        setEntryTagEditMode(entry, false, { clearDraft: true });
+                    });
 		            document.getElementById('app-root').addEventListener('keyup', (e) => {
 		                if (isSubsectionOrSectionTarget(e.target)) {
 		                    triggerContentUpdate(e);
@@ -1320,6 +1933,24 @@
 		                    clearEntrySearch();
 		                });
 		            }
+                    if (els.searchTagFilters) {
+                        els.searchTagFilters.addEventListener('mousedown', (e) => {
+                            const searchTagFilter = e.target.closest('.search-tag-filter');
+                            if (!searchTagFilter) return;
+                            e.preventDefault();
+                        });
+                        els.searchTagFilters.addEventListener('click', (e) => {
+                            const searchTagFilter = e.target.closest('.search-tag-filter');
+                            if (!searchTagFilter) return;
+                            const tagKey = searchTagFilter.dataset.tagKey || '';
+                            updateSelectedSearchTags({
+                                tagKey,
+                                useAll: !!e.shiftKey,
+                                toggle: !!(e.metaKey || e.ctrlKey || e.shiftKey),
+                            });
+                            applyEntrySearchPreservingScroll();
+                        });
+                    }
 		            document.getElementById('add-highlight-color-btn').addEventListener('click', () => {
 		                state.highlightPalette.push(defaultHighlightPalette[state.highlightPalette.length % defaultHighlightPalette.length]);
 		                persistHighlightPalette();
@@ -1525,6 +2156,12 @@
                 clearSearchDecorations(snapshotBody);
                 const snapshotSearch = snapshotBody.querySelector('#entry-search');
                 if (snapshotSearch) snapshotSearch.value = '';
+                snapshotBody.querySelectorAll('.entry-tag-row').forEach((row) => {
+                    row.dataset.editingTags = 'false';
+                });
+                snapshotBody.querySelectorAll('.entry-tag-input').forEach((input) => {
+                    input.value = '';
+                });
                 snapshotBody.querySelectorAll('.entry, .section, .subsection-group').forEach((el) => {
                     el.hidden = false;
                 });
@@ -1589,6 +2226,7 @@
 	            const btn = document.getElementById('enable-edit-btn');
 	            if (btn && !state.isUnsupportedBrowser) btn.removeAttribute('style');
 	            removeLegacyContentDragHandles(document.getElementById('app-root'));
+                enhanceEntries(document.getElementById('app-root'));
             
 	            bindBaseListeners();
 	            generateTOC();
@@ -1599,10 +2237,10 @@
                 if (window.location && window.location.protocol === 'file:') {
                     const key = computeEditLockKey(null);
 	                    const existing = readEditLock(key);
-	                    if (existing && existing.owner && existing.owner !== editSessionId && !isEditLockStale(existing)) {
-	                        const ownerTitle = existing.title ? ` (“${existing.title}”)` : '';
-	                        els.status.textContent = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
-	                    }
+                    if (existing && existing.owner && existing.owner !== editSessionId && !isEditLockStale(existing)) {
+                        const ownerTitle = existing.title ? ` ("${existing.title}")` : '';
+                        els.status.textContent = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
+                    }
 	                }
 	            } catch {}
 	        });
@@ -1684,6 +2322,7 @@
 	        }
 
 	        function triggerStructureUpdate() {
+                enhanceEntries(document.getElementById('app-root'));
 	            autoTitle();
 	            scheduleGenerateTOC();
 	            applyEntrySearch();
@@ -1970,6 +2609,7 @@
 	            text.dataset.placeholder = 'Paste notes here...';
 
 	            entry.append(heading, source, text);
+                ensureEntryTagUi(entry);
 	            return entry;
 	        }
 
@@ -2035,13 +2675,56 @@
                 return;
             }
 
+            const tagRemoveButton = e.target.closest('.entry-tag-remove');
+            if (tagRemoveButton) {
+                const entry = tagRemoveButton.closest('.entry');
+                const tagChip = tagRemoveButton.closest('.entry-tag');
+                if (!entry || !tagChip) return;
+                removeTagFromEntry(entry, tagChip.dataset.tagKey || '');
+                triggerStructureUpdate();
+                return;
+            }
+
+            const tagAddButton = e.target.closest('.entry-tag-add');
+            if (tagAddButton) {
+                const entry = tagAddButton.closest('.entry');
+                if (!entry) return;
+                if (commitTagInput(entry)) {
+                    triggerStructureUpdate();
+                }
+                return;
+            }
+
+            const tagEditToggle = e.target.closest('.entry-tag-edit-toggle');
+            if (tagEditToggle) {
+                const entry = tagEditToggle.closest('.entry');
+                if (!entry) return;
+                setEntryTagEditMode(entry, true, { focusInput: true });
+                return;
+            }
+
+            const tagDoneButton = e.target.closest('.entry-tag-done');
+            if (tagDoneButton) {
+                const entry = tagDoneButton.closest('.entry');
+                if (!entry) return;
+                finishTagEditing(entry);
+                return;
+            }
+
 	            if (e.target.classList.contains('add-entry')) {
+                    if (hasActiveEntrySearch()) {
+                        clearEntrySearch();
+                    }
 	                const newEntry = createEntryElement();
 	                e.target.parentNode.insertBefore(newEntry, e.target);
+                    focusEditableAtEnd(newEntry.querySelector('.entry-title'));
 	                triggerStructureUpdate();
 	            }
             
 	            if (e.target.classList.contains('add-subsection')) {
+                    if (hasActiveEntrySearch()) {
+                        clearEntrySearch();
+                    }
 	                const newSubsection = createSubsectionElement();
 	                e.target.parentNode.insertBefore(newSubsection, e.target);
 	                focusEditableAtEnd(newSubsection.querySelector('.subsection-title'));
@@ -2049,6 +2732,9 @@
 	            }
 
 		            if (e.target.classList.contains('add-section')) {
+                        if (hasActiveEntrySearch()) {
+                            clearEntrySearch();
+                        }
 		                const newSection = createSectionElement();
 		                document.getElementById('app-root').appendChild(newSection);
 		                focusEditableAtEnd(newSection.querySelector('.section-title'));

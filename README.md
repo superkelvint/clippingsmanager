@@ -18,9 +18,10 @@ Each entry includes:
 
 - A title
 - A source field
+- Optional tags
 - A note body
 
-The app also generates a table of contents from your structure, so long note sets remain navigable.
+The app also generates a table of contents from your structure, and the built-in search can match titles, sources, note text, and tags so long note sets remain navigable.
 
 ## Demo
 
@@ -97,6 +98,7 @@ The script is a zero-dependency Python file (`clippings-migrate.py`) that transf
 - Structured notes with sections, subsections, and entries
 - Editable document title
 - Auto-generated entry titles when left blank
+- Per-entry tags with autocomplete and tag-aware search
 - Table of contents with optional entry-level links
 - Drag-and-drop reordering for sections, subsections, and entries
 - Read-only mode to prevent accidental edits
@@ -111,8 +113,14 @@ While editing is enabled:
 - Add sections with `+ Add Section`
 - Add subsections or entries inside a section
 - Add entries inside subsections
+- Add tags to entries to track topics or themes
 - Delete items with the red delete buttons
 - Reorder items with the `⋮⋮` drag handles
+
+Search is available in both read-only and editing mode:
+
+- Search matches entry titles, sources, note text, and tags
+- Tags autocomplete from tags already used in the same document
 
 Formatting is intentionally minimal:
 
@@ -140,9 +148,10 @@ Editing and saving depend on the browser File System Access API. In practice, th
 1. Open `clippings.html` in a supported browser.
 2. Click `Enable Editing` and choose the file.
 3. Build your outline with sections, headings, and entries.
-4. Paste source snippets and write notes under each entry.
-5. Reorder content as the presentation structure settles.
-6. Present or review directly from the saved HTML file.
+4. Paste source snippets, add tags, and write notes under each entry.
+5. Search by keywords or tags while refining the structure.
+6. Reorder content as the presentation structure settles.
+7. Present or review directly from the saved HTML file.
 
 ## No Setup
 
