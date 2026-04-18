@@ -31,8 +31,6 @@ The app also generates a table of contents from your structure, and the built-in
   </a>
 </p>
 
-To refresh the walkthrough video after feature changes (including tags), see [`docs/demo-refresh.md`](docs/demo-refresh.md).
-
 ## Offline And Private
 
 Clippings Manager is built to work entirely on your machine.
@@ -78,19 +76,7 @@ To create a separate notes file for a new presentation:
 
 ## Migration (Upgrading)
 
-When a new version of Clippings Manager is released, you can migrate your existing notes to the new template using the provided Python script:
-
-1. Download the latest [`clippings.html`](https://github.com/superkelvint/clippingsmanager/raw/refs/heads/main/clippings.html) and save it (e.g., as `new_clippings.html`).
-2. Run the migration script using your existing notes file as the source:
-
-   ```bash
-   # This will create my_notes_migrated.html
-   python3 clippings-migrate.py my_notes.html new_clippings.html
-   ```
-
-3. Open `my_notes_migrated.html` to continue working with the latest features and your existing content.
-
-The script is a zero-dependency Python file (`clippings-migrate.py`) that transfers your document title, all note content, and your custom highlight palette into the new version.
+When a new version of Clippings Manager is released, you can migrate your existing notes to the new template by visiting [`https://superkelvint.github.io/clippingsmanager/migrate.html`](https://superkelvint.github.io/clippingsmanager/migrate.html)
 
 ## Features
 
