@@ -1,9 +1,43 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const chromePath = '/usr/bin/google-chrome';
+function resolveBinary({ envVar, absoluteCandidates, commandCandidates }) {
+  const envValue = process.env[envVar];
+  if (envValue) {
+    if (envValue.includes('/')) {
+      if (existsSync(envValue)) return envValue;
+    } else {
+      const check = spawnSync('which', [envValue], { encoding: 'utf8' });
+      if (check.status === 0) return envValue;
+    }
+  }
+  for (const absolutePath of absoluteCandidates) {
+    if (existsSync(absolutePath)) return absolutePath;
+  }
+  for (const commandName of commandCandidates) {
+    const check = spawnSync('which', [commandName], { encoding: 'utf8' });
+    if (check.status === 0) return commandName;
+  }
+  return '';
+}
+
+const chromePath = resolveBinary({
+  envVar: 'CLIPPINGS_DEMO_CHROME',
+  absoluteCandidates: [
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+  ],
+  commandCandidates: ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'],
+});
+const ffmpegPath = resolveBinary({
+  envVar: 'CLIPPINGS_DEMO_FFMPEG',
+  absoluteCandidates: ['/usr/bin/ffmpeg'],
+  commandCandidates: ['ffmpeg'],
+});
 const workdir = process.cwd();
 const htmlPath = resolve(workdir, 'clippings.html');
 const outputPath = resolve(workdir, 'clippings-demo.mp4');
@@ -124,7 +158,8 @@ function demoShimSource() {
 function interactionScript() {
   return `
     (async () => {
-      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const pace = 1.55;
+      const wait = (ms) => new Promise((r) => setTimeout(r, Math.round(ms * pace)));
       const click = (selector) => {
         const el = document.querySelector(selector);
         if (!el) throw new Error('Missing element: ' + selector);
@@ -156,6 +191,25 @@ function interactionScript() {
         el.dispatchEvent(new InputEvent('input', { bubbles: true, data: null, inputType: 'insertFromPaste' }));
         return el;
       };
+      const setInputValue = (selector, value) => {
+        const el = document.querySelector(selector);
+        if (!el) throw new Error('Missing input: ' + selector);
+        el.focus();
+        el.value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return el;
+      };
+      const clickWithMods = (selector, { ctrlKey = false, metaKey = false, shiftKey = false } = {}) => {
+        const el = document.querySelector(selector);
+        if (!el) throw new Error('Missing element for modified click: ' + selector);
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey, metaKey, shiftKey }));
+        return el;
+      };
+      const pressKey = (selector, key) => {
+        const el = document.querySelector(selector);
+        if (!el) throw new Error('Missing input for key press: ' + selector);
+        el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key }));
+      };
       const ensureCaption = () => {
         let el = document.getElementById('demo-caption');
         if (el) return el;
@@ -165,11 +219,11 @@ function interactionScript() {
         el.style.left = '50%';
         el.style.bottom = '28px';
         el.style.transform = 'translateX(-50%)';
-        el.style.padding = '10px 16px';
+        el.style.padding = '14px 20px';
         el.style.borderRadius = '999px';
         el.style.background = 'rgba(17, 24, 39, 0.88)';
         el.style.color = '#fff';
-        el.style.font = '600 16px system-ui, sans-serif';
+        el.style.font = '700 22px system-ui, sans-serif';
         el.style.letterSpacing = '0.01em';
         el.style.boxShadow = '0 10px 30px rgba(0,0,0,0.25)';
         el.style.zIndex = '2000';
@@ -179,7 +233,7 @@ function interactionScript() {
         document.body.appendChild(el);
         return el;
       };
-      const showCaption = async (text, ms = 1100) => {
+      const showCaption = async (text, ms = 1700) => {
         const el = ensureCaption();
         el.textContent = text;
         el.style.opacity = '1';
@@ -274,6 +328,47 @@ function interactionScript() {
       await wait(1000);
       await hideCaption();
 
+      await showCaption('Tags are now built in per entry', 800);
+      click('.section:first-of-type .entry:first-of-type .entry-tag-edit-toggle');
+      await wait(300);
+      setInputValue('.section:first-of-type .entry:first-of-type .entry-tag-input', 'AI');
+      await wait(200);
+      click('.section:first-of-type .entry:first-of-type .entry-tag-add');
+      await wait(400);
+      click('.section:first-of-type .entry:first-of-type .entry-tag-done');
+      await wait(600);
+
+      await showCaption('Autocomplete reuses known tags to keep naming consistent', 1100);
+      click('.section:first-of-type .entry:nth-of-type(2) .entry-tag-edit-toggle');
+      await wait(300);
+      setInputValue('.section:first-of-type .entry:nth-of-type(2) .entry-tag-input', 'ai');
+      await wait(200);
+      pressKey('.section:first-of-type .entry:nth-of-type(2) .entry-tag-input', 'Enter');
+      await wait(350);
+      setInputValue('.section:first-of-type .entry:nth-of-type(2) .entry-tag-input', 'Logistics');
+      await wait(200);
+      click('.section:first-of-type .entry:nth-of-type(2) .entry-tag-add');
+      await wait(350);
+      click('.section:first-of-type .entry:nth-of-type(2) .entry-tag-done');
+      await wait(900);
+      await hideCaption();
+
+      await showCaption('Search supports tag queries like tag:AI', 950);
+      setInputValue('#entry-search', 'tag:AI');
+      await wait(1400);
+      pressKey('#entry-search', 'Escape');
+      await wait(700);
+      await hideCaption();
+
+      await showCaption('Tag chips above search can filter by ANY or ALL matches', 1200);
+      click('[data-testid="search-tag-filter"]:nth-of-type(1)');
+      await wait(1100);
+      clickWithMods('[data-testid="search-tag-filter"]:nth-of-type(2)', { shiftKey: true });
+      await wait(1500);
+      pressKey('#entry-search', 'Escape');
+      await wait(800);
+      await hideCaption();
+
       click('.add-section');
       await wait(500);
       setEditable('.section:last-of-type .section-title', 'Food');
@@ -337,6 +432,13 @@ function interactionScript() {
 }
 
 async function main() {
+  if (!chromePath) {
+    throw new Error('Could not find Chrome/Chromium binary. Set CLIPPINGS_DEMO_CHROME to a valid executable path.');
+  }
+  if (!ffmpegPath) {
+    throw new Error('Could not find ffmpeg binary. Set CLIPPINGS_DEMO_FFMPEG to a valid executable path.');
+  }
+
   rmSync(framesDir, { recursive: true, force: true });
   mkdirSync(framesDir, { recursive: true });
 
@@ -420,7 +522,7 @@ async function main() {
       outputPath,
     ];
 
-    const ffmpeg = spawn('/usr/bin/ffmpeg', ffmpegArgs, {
+    const ffmpeg = spawn(ffmpegPath, ffmpegArgs, {
       stdio: ['ignore', 'pipe', 'pipe'],
       cwd: workdir,
     });

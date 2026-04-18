@@ -266,8 +266,7 @@ test('tags autocomplete from existing tags and participate in search', async ({ 
 
     await secondEntry.getByTestId('entry-tag-edit-toggle').click();
     const secondTagInput = secondEntry.getByTestId('entry-tag-input');
-    await secondTagInput.fill('A');
-    await secondTagInput.press('ArrowDown');
+    await secondTagInput.fill('ai');
     await secondTagInput.press('Enter');
     await expect(secondEntry.getByTestId('entry-tag-label')).toHaveText(['AI']);
 

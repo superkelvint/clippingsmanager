@@ -31,6 +31,8 @@ The app also generates a table of contents from your structure, and the built-in
   </a>
 </p>
 
+To refresh the walkthrough video after feature changes (including tags), see [`docs/demo-refresh.md`](docs/demo-refresh.md).
+
 ## Offline And Private
 
 Clippings Manager is built to work entirely on your machine.
@@ -142,6 +144,8 @@ Editing and saving depend on the browser File System Access API. In practice, th
 - [`clippings-migrate.py`](clippings-migrate.py): a zero-dependency Python script for migrating notes between versions
 - [`src/clippings.js`](src/clippings.js): source-of-truth JavaScript (merged into `clippings.html` on commit)
 - [`scripts/build-singlefile.mjs`](scripts/build-singlefile.mjs): merges `src/clippings.js` into `clippings.html`
+- [`record-demo.mjs`](record-demo.mjs): deterministic CDP-based script that regenerates `clippings-demo.mp4`
+- [`docs/demo-refresh.md`](docs/demo-refresh.md): runbook for updating and validating the walkthrough demo
 
 ## Typical Use
 
