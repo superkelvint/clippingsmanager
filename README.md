@@ -131,7 +131,6 @@ Editing and saving depend on the browser File System Access API. In practice, th
 - [`src/clippings.js`](src/clippings.js): source-of-truth JavaScript (merged into `clippings.html` on commit)
 - [`scripts/build-singlefile.mjs`](scripts/build-singlefile.mjs): merges `src/clippings.js` into `clippings.html`
 - [`record-demo.mjs`](record-demo.mjs): deterministic CDP-based script that regenerates `clippings-demo.mp4`
-- [`docs/demo-refresh.md`](docs/demo-refresh.md): runbook for updating and validating the walkthrough demo
 
 ## Typical Use
 
