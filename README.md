@@ -5,7 +5,7 @@ Clippings Manager is a single-file, self-contained, fully-offline HTML app for p
 It is designed around a simple hierarchy:
 
 - Sections for major topics
-- Optional subsections inside each section
+- Optional nested subsections at any depth
 - Entries inside sections or subsections for individual notes
 
 The HTML file is both the app and the document. Your notes are stored directly inside that file, so there is no backend, no database, and no need to be connected to the Internet.
@@ -99,8 +99,7 @@ When a new version of Clippings Manager is released, you can migrate your existi
 While editing is enabled:
 
 - Add sections with `+ Add Section`
-- Add subsections or entries inside a section
-- Add entries inside subsections
+- Add subsections or entries inside sections and subsections
 - Add tags to entries to track topics or themes
 - Delete items with the red delete buttons
 - Reorder items with the `⋮⋮` drag handles

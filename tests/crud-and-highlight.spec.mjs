@@ -87,8 +87,8 @@ test('dragging TOC subsection reorders subsections within a section', async ({ p
     const section = page.locator('[data-testid="app-root"] .section').first();
     await setContentEditableText(section.getByTestId('section-title'), 'S1');
 
-    await section.getByTestId('add-subsection').click();
-    await section.getByTestId('add-subsection').click();
+    await section.locator(':scope > [data-testid="add-subsection"]').click();
+    await section.locator(':scope > [data-testid="add-subsection"]').click();
     const subs = section.locator(':scope > .subsection-group');
     await expect(subs).toHaveCount(2);
     await setContentEditableText(subs.nth(0).getByTestId('subsection-title'), 'SubA');
@@ -100,6 +100,82 @@ test('dragging TOC subsection reorders subsections within a section', async ({ p
 
     const titlesAfter = await section.locator(':scope > .subsection-group .subsection-title').allTextContents();
     expect(titlesAfter.map((t) => t.trim())).toEqual(['SubB', 'SubA']);
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test('nested subsections render recursively in DOM and TOC', async ({ page }, testInfo) => {
+  const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
+  const temp = makeTempClippingsCopy(sourceHtmlPath);
+  try {
+    await addInitShims(page);
+    await page.goto(fileUrl(temp.path));
+    await enableEditing(page);
+
+    await page.getByTestId('add-section').click();
+    const section = page.locator('[data-testid="app-root"] .section').first();
+    await setContentEditableText(section.getByTestId('section-title'), 'Root');
+
+    await section.locator(':scope > [data-testid="add-subsection"]').click();
+    const sub1 = section.locator(':scope > .subsection-group').first();
+    await setContentEditableText(sub1.getByTestId('subsection-title'), 'Level 1');
+
+    await sub1.locator(':scope > [data-testid="add-subsection"]').click();
+    const sub2 = sub1.locator(':scope > .subsection-group').first();
+    await setContentEditableText(sub2.getByTestId('subsection-title'), 'Level 2');
+
+    await sub2.locator(':scope > [data-testid="add-subsection"]').click();
+    const sub3 = sub2.locator(':scope > .subsection-group').first();
+    await setContentEditableText(sub3.getByTestId('subsection-title'), 'Level 3');
+
+    await sub3.locator(':scope > [data-testid="add-entry"]').click();
+    const deepEntry = sub3.locator(':scope > .entry').first();
+    await setContentEditableText(deepEntry.getByTestId('entry-title'), 'Deep Entry');
+
+    await page.getByTestId('toc-level-btn').click();
+    await expect(page.getByTestId('toc')).toContainText('Level 1');
+    await expect(page.getByTestId('toc')).toContainText('Level 2');
+    await expect(page.getByTestId('toc')).toContainText('Level 3');
+    await expect(page.getByTestId('toc')).toContainText('Deep Entry');
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test('entry move modal moves entries to another parent container', async ({ page }, testInfo) => {
+  const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
+  const temp = makeTempClippingsCopy(sourceHtmlPath);
+  try {
+    await addInitShims(page);
+    await page.goto(fileUrl(temp.path));
+    await enableEditing(page);
+
+    const addSection = page.getByTestId('add-section');
+    await addSection.click();
+    await addSection.click();
+    const sections = page.locator('[data-testid="app-root"] .section');
+    const sectionA = sections.nth(0);
+    const sectionB = sections.nth(1);
+    await setContentEditableText(sectionA.getByTestId('section-title'), 'A');
+    await setContentEditableText(sectionB.getByTestId('section-title'), 'B');
+
+    await sectionA.locator(':scope > [data-testid="add-entry"]').click();
+    const movingEntry = sectionA.locator(':scope > .entry').first();
+    await setContentEditableText(movingEntry.getByTestId('entry-title'), 'Move Me');
+
+    await movingEntry.getByTestId('move-entry').click();
+    await expect(page.getByTestId('move-entry-modal')).toBeVisible();
+
+    const optionTexts = await page.getByTestId('move-entry-target-option').allTextContents();
+    expect(optionTexts.map((value) => value.trim())).not.toContain('A');
+
+    await page.getByTestId('move-entry-target-option').filter({ hasText: 'B' }).first().click();
+    await page.getByTestId('confirm-move-entry').click();
+
+    await expect(page.getByTestId('move-entry-modal')).toBeHidden();
+    await expect(sectionA.locator(':scope > .entry')).toHaveCount(0);
+    await expect(sectionB.locator(':scope > .entry .entry-title')).toHaveText(['Move Me']);
   } finally {
     temp.cleanup();
   }

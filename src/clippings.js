@@ -9,9 +9,13 @@
 	            updateChangelog: document.getElementById('update-changelog'),
 	            updateChangelogTitle: document.getElementById('update-changelog-title'),
 	            updateChangelogList: document.getElementById('update-changelog-list'),
-	            updateNowBtn: document.getElementById('update-now-btn'),
-	            updateNotNowBtn: document.getElementById('update-not-now-btn'),
-	            highlightPopup: document.getElementById('highlight-popup'),
+		            updateNowBtn: document.getElementById('update-now-btn'),
+		            updateNotNowBtn: document.getElementById('update-not-now-btn'),
+                    moveEntryModal: document.getElementById('move-entry-modal'),
+                    moveEntryTargetList: document.getElementById('move-entry-target-list'),
+                    moveEntryTargetName: document.getElementById('move-entry-target-name'),
+                    confirmMoveEntryBtn: document.getElementById('confirm-move-entry-btn'),
+		            highlightPopup: document.getElementById('highlight-popup'),
 	            highlightPaletteData: document.getElementById('highlight-palette-data'),
 	            highlightPanel: document.getElementById('highlight-panel'),
 	            highlightToggleBtn: document.getElementById('highlight-toggle-btn'),
@@ -46,6 +50,7 @@
                     knownTagColorMap: new Map(),
                     selectedSearchTagKeys: [],
                     selectedSearchTagMode: 'any',
+                    moveEntryContext: null,
 
 	            editLockKey: null,
 	            editLockHeartbeat: null,
@@ -54,6 +59,7 @@
 	        };
 
         const editableSelector = '[contenteditable]';
+        const containerSelector = '.section, .subsection-group';
         const defaultHighlightPalette = ['#facc15', '#86efac', '#93c5fd'];
         const defaultTagPalette = [
             { bg: '#fef3c7', border: '#f59e0b', text: '#92400e', removeBg: '#fde68a', removeText: '#78350f' },
@@ -614,13 +620,14 @@
                     document.querySelectorAll('.entry').forEach((entry) => setEntryTagEditMode(entry, false, { clearDraft: true }));
                 }
                 syncTagControls(document);
-		            if (isEditing) {
-		                bindEditingModeListeners();
-		            } else {
-		                unbindEditingModeListeners();
-		                hideHighlightPopup();
-		                setHighlightPanelOpen(false);
-		            }
+	            if (isEditing) {
+	                bindEditingModeListeners();
+	            } else {
+	                unbindEditingModeListeners();
+	                hideHighlightPopup();
+	                setHighlightPanelOpen(false);
+                    closeMoveEntryModal();
+	            }
 		            if (!isEditing) {
 		                clearTimeout(state.saveTimeout);
 		                state.pendingSave = false;
@@ -659,6 +666,7 @@
                 document.getElementById('app-root').innerHTML = parsedRoot.innerHTML;
                 removeLegacyContentDragHandles(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
+                syncContainerDepths();
 	                document.title = (parsedTitle.textContent || '').trim() || 'Untitled Document';
 	                state.fileHandle = handle;
 	                generateTOC();
@@ -1275,15 +1283,15 @@
                 }
             });
 
-            document.querySelectorAll('.subsection-group').forEach((group) => {
-                const hasVisibleEntries = Array.from(group.querySelectorAll(':scope > .entry')).some((entry) => !entry.hidden);
-                group.hidden = (hasTypedTerms || hasSelectedTagFilters) && !hasVisibleEntries;
-            });
-
-            document.querySelectorAll('.section').forEach((section) => {
-                const hasVisibleDirectEntries = Array.from(section.querySelectorAll(':scope > .entry')).some((entry) => !entry.hidden);
-                const hasVisibleSubsections = Array.from(section.querySelectorAll(':scope > .subsection-group')).some((group) => !group.hidden);
-                section.hidden = (hasTypedTerms || hasSelectedTagFilters) && !hasVisibleDirectEntries && !hasVisibleSubsections;
+            const hasActiveFilters = hasTypedTerms || hasSelectedTagFilters;
+            const updateContainerVisibility = (container) => {
+                const hasVisibleDirectEntries = getDirectChildEntries(container).some((entry) => !entry.hidden);
+                const hasVisibleChildContainers = getDirectChildContainers(container).some((childContainer) => updateContainerVisibility(childContainer));
+                container.hidden = hasActiveFilters && !hasVisibleDirectEntries && !hasVisibleChildContainers;
+                return !container.hidden;
+            };
+            getDirectChildContainers(document.getElementById('app-root')).forEach((container) => {
+                updateContainerVisibility(container);
             });
 
             renderSearchTagFilters(document.getElementById('app-root'));
@@ -1353,6 +1361,125 @@
 	            closeResetModal();
 	            triggerStructureUpdate();
 	        }
+
+        function getContainerInsertAnchor(container, preferredSelector = '.add-entry') {
+            if (!isContainerNode(container)) return null;
+            return container.querySelector(`:scope > ${preferredSelector}`) ||
+                container.querySelector(':scope > .add-subsection') ||
+                container.querySelector(':scope > .add-entry');
+        }
+
+        function collectMoveTargetContainers(parent, depth, pathTitles, out) {
+            getDirectChildContainers(parent).forEach((container) => {
+                const id = ensureContainerDomId(container);
+                const title = getContainerTitleText(container);
+                const nextPath = [...pathTitles, title];
+                out.push({ id, depth, path: nextPath.join(' / ') });
+                collectMoveTargetContainers(container, depth + 1, nextPath, out);
+            });
+        }
+
+        function closeMoveEntryModal() {
+            if (!els.moveEntryModal) return;
+            els.moveEntryModal.hidden = true;
+            state.moveEntryContext = null;
+            if (els.moveEntryTargetList) {
+                els.moveEntryTargetList.replaceChildren();
+            }
+            if (els.moveEntryTargetName) {
+                els.moveEntryTargetName.textContent = 'No destination selected';
+            }
+            if (els.confirmMoveEntryBtn) {
+                els.confirmMoveEntryBtn.disabled = true;
+            }
+        }
+
+        function updateMoveEntryConfirmState() {
+            if (!els.confirmMoveEntryBtn || !els.moveEntryTargetName) return;
+            const context = state.moveEntryContext;
+            if (!context || !context.targetId) {
+                els.confirmMoveEntryBtn.disabled = true;
+                els.moveEntryTargetName.textContent = 'No destination selected';
+                return;
+            }
+
+            const selected = context.targets.find((target) => target.id === context.targetId);
+            if (!selected) {
+                els.confirmMoveEntryBtn.disabled = true;
+                els.moveEntryTargetName.textContent = 'No destination selected';
+                return;
+            }
+
+            els.confirmMoveEntryBtn.disabled = false;
+            els.moveEntryTargetName.textContent = selected.path;
+        }
+
+        function renderMoveEntryTargetList() {
+            if (!els.moveEntryTargetList) return;
+            els.moveEntryTargetList.replaceChildren();
+            const context = state.moveEntryContext;
+            if (!context || context.targets.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'move-entry-empty';
+                empty.textContent = 'No other destination is available.';
+                els.moveEntryTargetList.appendChild(empty);
+                updateMoveEntryConfirmState();
+                return;
+            }
+
+            context.targets.forEach((target) => {
+                const option = document.createElement('button');
+                option.type = 'button';
+                option.className = 'move-entry-target-option';
+                option.setAttribute('data-testid', 'move-entry-target-option');
+                option.dataset.targetId = target.id;
+                option.dataset.depth = String(target.depth);
+                option.style.setProperty('--target-depth', String(target.depth));
+                option.textContent = target.path;
+                if (context.targetId === target.id) {
+                    option.dataset.selected = 'true';
+                }
+                els.moveEntryTargetList.appendChild(option);
+            });
+            updateMoveEntryConfirmState();
+        }
+
+        function openMoveEntryModal(entry) {
+            if (!entry || !els.moveEntryModal || !els.moveEntryTargetList) return;
+            const entryId = ensureDomId(entry, 'entry');
+            const currentParent = entry.parentElement;
+            if (!entryId || !isContainerNode(currentParent)) return;
+
+            const currentParentId = ensureContainerDomId(currentParent);
+            const allTargets = [];
+            collectMoveTargetContainers(document.getElementById('app-root'), 0, [], allTargets);
+            const targets = allTargets.filter((target) => target.id !== currentParentId);
+            state.moveEntryContext = {
+                entryId,
+                targets,
+                targetId: targets[0] ? targets[0].id : '',
+            };
+            renderMoveEntryTargetList();
+            els.moveEntryModal.hidden = false;
+        }
+
+        function moveEntryToSelectedTarget() {
+            const context = state.moveEntryContext;
+            if (!context || !context.entryId || !context.targetId) return;
+            const entry = document.getElementById(context.entryId);
+            const targetContainer = document.getElementById(context.targetId);
+            if (!entry || !targetContainer || !isContainerNode(targetContainer)) return;
+            if (entry.parentElement === targetContainer) return;
+
+            const insertAnchor = getContainerInsertAnchor(targetContainer, '.add-entry');
+            if (insertAnchor) {
+                targetContainer.insertBefore(entry, insertAnchor);
+            } else {
+                targetContainer.appendChild(entry);
+            }
+            closeMoveEntryModal();
+            triggerStructureUpdate();
+        }
 
         function insertFragmentAtCursor(fragment) {
             const selection = window.getSelection();
@@ -1917,10 +2044,32 @@
 	                    resetDocumentNow();
 	                }
 	            });
-		            els.resetModal.addEventListener('click', (e) => {
-		                if (e.target === els.resetModal) closeResetModal();
-		            });
-		            document.getElementById('toc-level-btn').addEventListener('click', () => {
+	            els.resetModal.addEventListener('click', (e) => {
+	                if (e.target === els.resetModal) closeResetModal();
+	            });
+            const cancelMoveBtn = document.getElementById('cancel-move-entry-btn');
+            if (cancelMoveBtn) {
+                cancelMoveBtn.addEventListener('click', closeMoveEntryModal);
+            }
+            if (els.moveEntryModal) {
+                els.moveEntryModal.addEventListener('click', (e) => {
+                    if (e.target === els.moveEntryModal) closeMoveEntryModal();
+                });
+            }
+            if (els.confirmMoveEntryBtn) {
+                els.confirmMoveEntryBtn.addEventListener('click', () => {
+                    moveEntryToSelectedTarget();
+                });
+            }
+            if (els.moveEntryTargetList) {
+                els.moveEntryTargetList.addEventListener('click', (e) => {
+                    const option = e.target.closest('.move-entry-target-option');
+                    if (!option || !state.moveEntryContext) return;
+                    state.moveEntryContext.targetId = option.dataset.targetId || '';
+                    renderMoveEntryTargetList();
+                });
+            }
+	            document.getElementById('toc-level-btn').addEventListener('click', () => {
 		                state.tocIncludeEntries = !state.tocIncludeEntries;
 		                localStorage.setItem('toc-include-entries', state.tocIncludeEntries ? '1' : '0');
 		                updateTocToggleLabel();
@@ -1987,6 +2136,11 @@
 		                closeUpdateModal();
 		                return;
 		            }
+                    if (els.moveEntryModal && !els.moveEntryModal.hidden && e.key === 'Escape') {
+                        e.preventDefault();
+                        closeMoveEntryModal();
+                        return;
+                    }
 		            if (!els.helpModal.hidden && e.key === 'Escape') {
 		                e.preventDefault();
 		                closeHelp();
@@ -2184,10 +2338,18 @@
             if (snapshotHelpModal) snapshotHelpModal.setAttribute('hidden', '');
             const snapshotResetModal = snapshot.querySelector('#reset-modal');
             if (snapshotResetModal) snapshotResetModal.setAttribute('hidden', '');
+            const snapshotMoveEntryModal = snapshot.querySelector('#move-entry-modal');
+            if (snapshotMoveEntryModal) snapshotMoveEntryModal.setAttribute('hidden', '');
             const snapshotResetInput = snapshot.querySelector('#reset-confirm-input');
             if (snapshotResetInput) snapshotResetInput.value = '';
             const snapshotResetBtn = snapshot.querySelector('#confirm-reset-btn');
             if (snapshotResetBtn) snapshotResetBtn.setAttribute('disabled', '');
+            const snapshotMoveEntryTargetName = snapshot.querySelector('#move-entry-target-name');
+            if (snapshotMoveEntryTargetName) snapshotMoveEntryTargetName.textContent = 'No destination selected';
+            const snapshotMoveEntryTargetList = snapshot.querySelector('#move-entry-target-list');
+            if (snapshotMoveEntryTargetList) snapshotMoveEntryTargetList.replaceChildren();
+            const snapshotConfirmMoveBtn = snapshot.querySelector('#confirm-move-entry-btn');
+            if (snapshotConfirmMoveBtn) snapshotConfirmMoveBtn.setAttribute('disabled', '');
 
             return "<!DOCTYPE html>\n" + snapshot.outerHTML;
         }
@@ -2228,6 +2390,7 @@
 	            if (btn && !state.isUnsupportedBrowser) btn.removeAttribute('style');
 	            removeLegacyContentDragHandles(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
+                syncContainerDepths();
             
 	            bindBaseListeners();
 	            generateTOC();
@@ -2324,6 +2487,7 @@
 
 	        function triggerStructureUpdate() {
                 enhanceEntries(document.getElementById('app-root'));
+            syncContainerDepths();
 	            autoTitle();
 	            scheduleGenerateTOC();
 	            applyEntrySearch();
@@ -2409,8 +2573,53 @@
 	            return changed;
 	        }
 
+        function isContainerNode(node) {
+            return !!(node && node.matches && node.matches(containerSelector));
+        }
+
         function getDirectChildItems(parent, selector) {
             return Array.from(parent.children).filter((child) => child.matches(selector));
+        }
+
+        function getDirectChildEntries(parent) {
+            return getDirectChildItems(parent, '.entry');
+        }
+
+        function getDirectChildContainers(parent) {
+            return getDirectChildItems(parent, containerSelector);
+        }
+
+        function getContainerTitleNode(container) {
+            if (!isContainerNode(container)) return null;
+            if (container.classList.contains('section')) {
+                return container.querySelector(':scope > h2 .section-title');
+            }
+            return container.querySelector(':scope > h3 .subsection-title');
+        }
+
+        function getContainerTitleText(container) {
+            const titleNode = getContainerTitleNode(container);
+            const title = (titleNode ? titleNode.textContent : '').trim();
+            if (title) return title;
+            return container.classList.contains('section') ? 'Untitled Section' : 'Untitled Subsection';
+        }
+
+        function ensureContainerDomId(container) {
+            if (!isContainerNode(container)) return '';
+            return ensureDomId(container, container.classList.contains('section') ? 'sec' : 'subsec');
+        }
+
+        function buildContainerDepthMap(parent, depth) {
+            getDirectChildContainers(parent).forEach((container) => {
+                container.dataset.depth = String(depth);
+                buildContainerDepthMap(container, depth + 1);
+            });
+        }
+
+        function syncContainerDepths() {
+            const appRoot = document.getElementById('app-root');
+            if (!appRoot) return;
+            buildContainerDepthMap(appRoot, 0);
         }
 
 	        function createTocDragHandle() {
@@ -2438,118 +2647,86 @@
 	            return el.id;
 	        }
 
-	        function appendEntriesToToc(parentItem, entryNodes, parentTargetId) {
-	            if (!state.tocIncludeEntries || entryNodes.length === 0) return;
+        function createTocEntryItem(entry, parentTargetId) {
+            ensureDomId(entry, 'entry');
+            const rawTitle = entry.querySelector('.entry-title') ? entry.querySelector('.entry-title').textContent : '';
+            const entryTitle = rawTitle.trim() || 'Untitled Entry';
 
-	            const entryList = document.createElement('ul');
-	            entryNodes.forEach((entry) => {
-	                ensureDomId(entry, 'entry');
-	                const rawTitle = entry.querySelector('.entry-title') ? entry.querySelector('.entry-title').textContent : '';
-	                const entryTitle = rawTitle.trim() || 'Untitled Entry';
+            const entryItem = document.createElement('li');
+            entryItem.classList.add('draggable');
+            entryItem.setAttribute('data-testid', 'toc-item');
+            entryItem.dataset.tocType = 'entry';
+            entryItem.dataset.targetId = entry.id;
+            entryItem.dataset.parentId = parentTargetId || '';
 
-	                const entryItem = document.createElement('li');
-	                entryItem.classList.add('draggable');
-	                entryItem.setAttribute('data-testid', 'toc-item');
-	                entryItem.dataset.tocType = 'entry';
-	                entryItem.dataset.targetId = entry.id;
-	                entryItem.dataset.parentId = parentTargetId || '';
-
-                const entryRow = document.createElement('span');
-                entryRow.className = 'toc-row';
-                entryRow.appendChild(createTocDragHandle());
-                const entryLink = document.createElement('a');
-                entryLink.href = `#${entry.id}`;
-                entryLink.textContent = entryTitle;
-                entryRow.appendChild(entryLink);
-                entryItem.appendChild(entryRow);
-                entryList.appendChild(entryItem);
-            });
-
-            parentItem.appendChild(entryList);
+            const entryRow = document.createElement('span');
+            entryRow.className = 'toc-row';
+            entryRow.appendChild(createTocDragHandle());
+            const entryLink = document.createElement('a');
+            entryLink.href = `#${entry.id}`;
+            entryLink.textContent = entryTitle;
+            entryRow.appendChild(entryLink);
+            entryItem.appendChild(entryRow);
+            return entryItem;
         }
 
-	        function generateTOC() {
-	            const toc = document.getElementById('toc');
-	            const topList = document.createElement('ul');
+        function createTocContainerItem(container, parentTargetId) {
+            const containerId = ensureContainerDomId(container);
+            const item = document.createElement('li');
+            item.classList.add('draggable');
+            item.setAttribute('data-testid', 'toc-item');
+            item.dataset.tocType = container.classList.contains('section') ? 'section' : 'subsection';
+            item.dataset.targetId = containerId;
+            item.dataset.parentId = parentTargetId || '';
 
-	            document.querySelectorAll('.section').forEach((sec) => {
-	                const sTitle = sec.querySelector('.section-title').textContent || 'Untitled Section';
-	                ensureDomId(sec, 'sec');
+            const row = document.createElement('span');
+            row.className = 'toc-row';
+            row.appendChild(createTocDragHandle());
+            const link = document.createElement('a');
+            link.href = `#${containerId}`;
+            link.textContent = getContainerTitleText(container);
+            if (container.classList.contains('section')) {
+                const strong = document.createElement('strong');
+                strong.appendChild(link);
+                row.appendChild(strong);
+            } else {
+                row.appendChild(link);
+            }
+            item.appendChild(row);
+            return item;
+        }
 
-	                const secItem = document.createElement('li');
-	                secItem.classList.add('draggable');
-	                secItem.setAttribute('data-testid', 'toc-item');
-	                secItem.dataset.tocType = 'section';
-                secItem.dataset.targetId = sec.id;
-                secItem.dataset.parentId = 'app-root';
+        function appendContainerChildrenToToc(container, containerItem) {
+            const childrenList = document.createElement('ul');
+            const parentTargetId = ensureContainerDomId(container);
 
-                const secRow = document.createElement('span');
-                secRow.className = 'toc-row';
-                secRow.appendChild(createTocDragHandle());
-                const secStrong = document.createElement('strong');
-                const secLink = document.createElement('a');
-                secLink.href = `#${sec.id}`;
-                secLink.textContent = sTitle;
-                secStrong.appendChild(secLink);
-                secRow.appendChild(secStrong);
-                secItem.appendChild(secRow);
-
-	                const sectionChildren = document.createElement('ul');
-
-	                Array.from(sec.children).forEach((child) => {
-	                    if (child.matches('.subsection-group')) {
-	                        const subsecTitle = child.querySelector('.subsection-title').textContent || 'Untitled Subsection';
-	                        ensureDomId(child, 'subsec');
-
-	                        const subsecItem = document.createElement('li');
-	                        subsecItem.classList.add('draggable');
-	                        subsecItem.setAttribute('data-testid', 'toc-item');
-                        subsecItem.dataset.tocType = 'subsection';
-                        subsecItem.dataset.targetId = child.id;
-                        subsecItem.dataset.parentId = sec.id;
-
-                        const subsecRow = document.createElement('span');
-                        subsecRow.className = 'toc-row';
-                        subsecRow.appendChild(createTocDragHandle());
-                        const subsecLink = document.createElement('a');
-                        subsecLink.href = `#${child.id}`;
-                        subsecLink.textContent = subsecTitle;
-	                        subsecRow.appendChild(subsecLink);
-	                        subsecItem.appendChild(subsecRow);
-
-	                        appendEntriesToToc(subsecItem, getDirectChildItems(child, '.entry'), child.id);
-	                        sectionChildren.appendChild(subsecItem);
-	                        return;
-	                    }
-
-	                    if (child.matches('.entry') && state.tocIncludeEntries) {
-	                        ensureDomId(child, 'entry');
-	                        const rawTitle = child.querySelector('.entry-title') ? child.querySelector('.entry-title').textContent : '';
-	                        const entryTitle = rawTitle.trim() || 'Untitled Entry';
-
-                        const entryItem = document.createElement('li');
-                        entryItem.classList.add('draggable');
-                        entryItem.setAttribute('data-testid', 'toc-item');
-                        entryItem.dataset.tocType = 'entry';
-                        entryItem.dataset.targetId = child.id;
-                        entryItem.dataset.parentId = sec.id;
-
-                        const entryRow = document.createElement('span');
-                        entryRow.className = 'toc-row';
-                        entryRow.appendChild(createTocDragHandle());
-                        const entryLink = document.createElement('a');
-                        entryLink.href = `#${child.id}`;
-                        entryLink.textContent = entryTitle;
-	                        entryRow.appendChild(entryLink);
-	                        entryItem.appendChild(entryRow);
-	                        sectionChildren.appendChild(entryItem);
-	                    }
-	                });
-
-                if (sectionChildren.children.length > 0) {
-                    secItem.appendChild(sectionChildren);
+            Array.from(container.children).forEach((child) => {
+                if (isContainerNode(child)) {
+                    const childItem = createTocContainerItem(child, parentTargetId);
+                    appendContainerChildrenToToc(child, childItem);
+                    childrenList.appendChild(childItem);
+                    return;
                 }
-                topList.appendChild(secItem);
+
+                if (child.matches('.entry') && state.tocIncludeEntries) {
+                    childrenList.appendChild(createTocEntryItem(child, parentTargetId));
+                }
+            });
+
+            if (childrenList.children.length > 0) {
+                containerItem.appendChild(childrenList);
+            }
+        }
+
+        function generateTOC() {
+            const toc = document.getElementById('toc');
+            const topList = document.createElement('ul');
+            const appRoot = document.getElementById('app-root');
+
+            getDirectChildContainers(appRoot).forEach((container) => {
+                const containerItem = createTocContainerItem(container, 'app-root');
+                appendContainerChildrenToToc(container, containerItem);
+                topList.appendChild(containerItem);
             });
 
             toc.replaceChildren(topList);
@@ -2565,17 +2742,28 @@
 	            return button;
 	        }
 
-	        function createEntryMoveButton(direction, testId) {
-	            const button = document.createElement('button');
-	            button.type = 'button';
-	            button.className = `entry-move-btn entry-move-${direction}`;
+        function createEntryMoveButton(direction, testId) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `entry-move-btn entry-move-${direction}`;
 	            button.dataset.moveDirection = direction;
 	            if (testId) button.setAttribute('data-testid', testId);
 	            button.setAttribute('aria-label', direction === 'up' ? 'Move Entry Up' : 'Move Entry Down');
 	            button.title = direction === 'up' ? 'Move entry up' : 'Move entry down';
-	            button.textContent = direction === 'up' ? '↑' : '↓';
-	            return button;
-	        }
+            button.textContent = direction === 'up' ? '↑' : '↓';
+            return button;
+        }
+
+        function createEntryRelocateButton() {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'entry-relocate-btn';
+            button.setAttribute('data-testid', 'move-entry');
+            button.setAttribute('aria-label', 'Move Entry To Another Group');
+            button.title = 'Move entry to another section or subsection';
+            button.textContent = 'Move...';
+            return button;
+        }
 
 	        function createEditableSpan(className, testId, placeholder) {
 	            const span = document.createElement('span');
@@ -2604,11 +2792,12 @@
 	            const toolbar = document.createElement('span');
 	            toolbar.className = 'item-toolbar';
 
-	            const title = createEditableSpan('entry-title', 'entry-title', 'Title (Auto-generates if empty)');
-	            const moveUp = createEntryMoveButton('up', 'move-entry-up');
-	            const moveDown = createEntryMoveButton('down', 'move-entry-down');
-	            const del = createDeleteButton('entry', 'Delete Entry', 'delete-entry');
-	            toolbar.append(title, moveUp, moveDown, del);
+            const title = createEditableSpan('entry-title', 'entry-title', 'Title (Auto-generates if empty)');
+            const moveUp = createEntryMoveButton('up', 'move-entry-up');
+            const moveDown = createEntryMoveButton('down', 'move-entry-down');
+            const relocate = createEntryRelocateButton();
+            const del = createDeleteButton('entry', 'Delete Entry', 'delete-entry');
+            toolbar.append(title, moveUp, moveDown, relocate, del);
 	            heading.appendChild(toolbar);
 
 	            const source = document.createElement('div');
@@ -2641,8 +2830,9 @@
 	            toolbar.append(title, del);
 	            heading.appendChild(toolbar);
 
+            const addSub = createAddButton('add-btn add-subsection', 'add-subsection', '+ Add Subsection');
 	            const addEntry = createAddButton('add-btn add-entry', 'add-entry', '+ Add Entry');
-	            group.append(heading, addEntry);
+	            group.append(heading, addSub, addEntry);
 	            return group;
 	        }
 
@@ -2764,6 +2954,14 @@
 
 	        document.body.addEventListener('click', (e) => {
 	            if (!document.body.classList.contains('is-editing')) return;
+
+            const relocateButton = e.target.closest('.entry-relocate-btn');
+            if (relocateButton) {
+                const entry = relocateButton.closest('.entry');
+                if (!entry) return;
+                openMoveEntryModal(entry);
+                return;
+            }
 
             const moveButton = e.target.closest('.entry-move-btn');
             if (moveButton) {
