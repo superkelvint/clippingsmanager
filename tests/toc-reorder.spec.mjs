@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import {
   addInitShims,
+  addSectionEntry,
   dragTocItem,
   enableEditing,
   fileUrl,
@@ -56,10 +57,9 @@ test('dragging TOC entry reorders entries within a section', async ({ page }, te
     await setContentEditableText(section.locator('[data-testid="section-title"]'), 'S1');
 
     // Add 3 entries at section root.
-    const addEntry = section.locator('[data-testid="add-entry"]').first();
-    await addEntry.click();
-    await addEntry.click();
-    await addEntry.click();
+    await addSectionEntry(section);
+    await addSectionEntry(section);
+    await addSectionEntry(section);
 
     const entryTitles = section.locator(':scope > .entry [data-testid="entry-title"]');
     await expect(entryTitles).toHaveCount(3);

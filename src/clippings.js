@@ -666,6 +666,7 @@
                 document.getElementById('app-root').innerHTML = parsedRoot.innerHTML;
                 removeLegacyContentDragHandles(document.getElementById('app-root'));
                 ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
+                ensureContainerCollapseControls(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
                 syncContainerDepths();
 	                document.title = (parsedTitle.textContent || '').trim() || 'Untitled Document';
@@ -2397,6 +2398,7 @@
 	            if (btn && !state.isUnsupportedBrowser) btn.removeAttribute('style');
             removeLegacyContentDragHandles(document.getElementById('app-root'));
                 ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
+                ensureContainerCollapseControls(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
                 syncContainerDepths();
             
@@ -2495,6 +2497,7 @@
 
         function triggerStructureUpdate() {
                 ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
+                ensureContainerCollapseControls(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
             syncContainerDepths();
 	            autoTitle();
@@ -2658,6 +2661,38 @@
                     const addEntryBottom = section.querySelector(':scope > .add-entry:not(.add-entry-top)');
                     if (addEntryBottom) addEntryBottom.hidden = entryCount === 0;
                 }
+            });
+        }
+
+        function syncContainerCollapseState(container) {
+            if (!isContainerNode(container)) return;
+            const collapsed = container.dataset.collapsed === 'true';
+            container.classList.toggle('is-collapsed', collapsed);
+            const toggle = container.querySelector(':scope > h2 .collapse-toggle, :scope > h3 .collapse-toggle');
+            if (!toggle) return;
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+            toggle.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${container.classList.contains('section') ? 'section' : 'subsection'}`);
+            toggle.title = collapsed ? 'Expand' : 'Collapse';
+            toggle.textContent = collapsed ? '+' : '−';
+        }
+
+        function ensureContainerCollapseControls(root = document) {
+            if (!root) return;
+            root.querySelectorAll(containerSelector).forEach((container) => {
+                const heading = container.querySelector(':scope > h2, :scope > h3');
+                const toolbar = heading && heading.querySelector(':scope > .item-toolbar');
+                if (toolbar) {
+                    const title = toolbar.querySelector(':scope > .section-title, :scope > .subsection-title');
+                    let toggle = toolbar.querySelector(':scope > .collapse-toggle');
+                    if (!toggle) {
+                        toggle = document.createElement('button');
+                        toggle.type = 'button';
+                        toggle.className = 'collapse-toggle';
+                        toggle.setAttribute('data-testid', container.classList.contains('section') ? 'collapse-section' : 'collapse-subsection');
+                    }
+                    if (title) toolbar.insertBefore(toggle, title);
+                }
+                syncContainerCollapseState(container);
             });
         }
 
@@ -2856,7 +2891,7 @@
 	            return entry;
 	        }
 
-	        function createSubsectionElement() {
+        function createSubsectionElement() {
 	            const group = document.createElement('div');
 	            group.className = 'subsection-group draggable';
 	            group.dataset.type = 'subsection';
@@ -2864,10 +2899,14 @@
 	            const heading = document.createElement('h3');
 	            const toolbar = document.createElement('span');
 	            toolbar.className = 'item-toolbar';
-	            const title = createEditableSpan('subsection-title', 'subsection-title', 'Subsection Title...');
-	            const del = createDeleteButton('subsection', 'Delete Subsection', 'delete-subsection');
-	            toolbar.append(title, del);
-	            heading.appendChild(toolbar);
+            const title = createEditableSpan('subsection-title', 'subsection-title', 'Subsection Title...');
+            const collapse = document.createElement('button');
+            collapse.type = 'button';
+            collapse.className = 'collapse-toggle';
+            collapse.setAttribute('data-testid', 'collapse-subsection');
+            const del = createDeleteButton('subsection', 'Delete Subsection', 'delete-subsection');
+            toolbar.append(collapse, title, del);
+            heading.appendChild(toolbar);
 
             const addSub = createAddButton('add-btn add-subsection', 'add-subsection', '+ Add Subsection');
 	            const addEntry = createAddButton('add-btn add-entry', 'add-entry', '+ Add Entry');
@@ -2883,9 +2922,13 @@
 	            const heading = document.createElement('h2');
 	            const toolbar = document.createElement('span');
 	            toolbar.className = 'item-toolbar';
-	            const title = createEditableSpan('section-title', 'section-title', 'Section Title...');
-	            const del = createDeleteButton('section', 'Delete Section', 'delete-section');
-	            toolbar.append(title, del);
+            const title = createEditableSpan('section-title', 'section-title', 'Section Title...');
+            const collapse = document.createElement('button');
+            collapse.type = 'button';
+            collapse.className = 'collapse-toggle';
+            collapse.setAttribute('data-testid', 'collapse-section');
+            const del = createDeleteButton('section', 'Delete Section', 'delete-section');
+            toolbar.append(collapse, title, del);
             heading.appendChild(toolbar);
 
             const addEntryTop = createAddButton('add-btn add-entry-top', 'add-entry-top', '+ Add Entry');
@@ -2993,6 +3036,18 @@
 	        }
 
 	        document.body.addEventListener('click', (e) => {
+	            const collapseButton = e.target.closest('.collapse-toggle');
+	            if (collapseButton) {
+	                const container = collapseButton.closest(containerSelector);
+	                if (!container) return;
+	                container.dataset.collapsed = container.dataset.collapsed === 'true' ? 'false' : 'true';
+	                syncContainerCollapseState(container);
+	                if (document.body.classList.contains('is-editing')) {
+	                    triggerStructureUpdate();
+	                }
+	                return;
+	            }
+
 	            if (!document.body.classList.contains('is-editing')) return;
 
             const relocateButton = e.target.closest('.entry-relocate-btn');

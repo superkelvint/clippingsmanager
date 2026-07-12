@@ -60,6 +60,16 @@ export async function enableEditing(page) {
   await expect(page.locator('body')).toHaveClass(/is-editing/);
 }
 
+export async function addSectionEntry(section) {
+  const topButton = section.getByTestId('add-entry-top');
+  const entryCount = await section.locator(':scope > .entry').count();
+  if (entryCount === 0 && await topButton.isVisible()) {
+    await topButton.click();
+    return;
+  }
+  await section.locator(':scope > [data-testid="add-entry"]').click();
+}
+
 export async function setContentEditableText(locator, text) {
   await locator.evaluate((el, value) => {
     el.focus();

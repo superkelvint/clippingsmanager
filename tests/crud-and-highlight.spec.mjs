@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import {
   addInitShims,
+  addSectionEntry,
   dragTocItem,
   enableEditing,
   fileUrl,
@@ -38,7 +39,7 @@ test('add/delete sections, subsections, entries updates DOM and TOC', async ({ p
     // Add one entry in subsection and one entry at section root.
     await subsections.first().getByTestId('add-entry').click();
     // Avoid strict-mode ambiguity: section also contains nested add-entry buttons inside subsections.
-    await s1.locator(':scope > [data-testid="add-entry"]').click();
+    await addSectionEntry(s1);
 
     const subEntries = subsections.first().locator(':scope > .entry');
     const rootEntries = s1.locator(':scope > .entry');
@@ -87,7 +88,7 @@ test('top section add-entry control inserts entries at the start', async ({ page
     const section = page.locator('[data-testid="app-root"] .section').first();
     const addEntryTop = section.getByTestId('add-entry-top');
     const addEntryBottom = section.locator(':scope > [data-testid="add-entry"]');
-    await expect(section.locator(':scope > button')).toHaveAttribute('data-testid', 'add-subsection');
+    await expect(section.locator(':scope > button').first()).toHaveAttribute('data-testid', 'add-subsection');
 
     await expect(addEntryTop).toBeVisible();
     await expect(addEntryBottom).toBeHidden();
@@ -176,6 +177,42 @@ test('nested subsections render recursively in DOM and TOC', async ({ page }, te
   }
 });
 
+test('sections and subsections can be collapsed and expanded', async ({ page }, testInfo) => {
+  const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
+  const temp = makeTempClippingsCopy(sourceHtmlPath);
+  try {
+    await addInitShims(page);
+    await page.goto(fileUrl(temp.path));
+    await enableEditing(page);
+
+    await page.getByTestId('add-section').click();
+    const section = page.locator('[data-testid="app-root"] .section').first();
+    await section.getByTestId('add-subsection').click();
+    const subsection = section.locator(':scope > .subsection-group').first();
+    await subsection.getByTestId('add-entry').click();
+    const entry = subsection.locator(':scope > .entry').first();
+    await setContentEditableText(entry.getByTestId('entry-title'), 'Nested entry');
+
+    await subsection.getByTestId('collapse-subsection').click();
+    await expect(subsection).toHaveClass(/is-collapsed/);
+    await expect(entry).toBeHidden();
+    await expect(subsection.getByTestId('collapse-subsection')).toHaveAttribute('aria-expanded', 'false');
+
+    await subsection.getByTestId('collapse-subsection').click();
+    await expect(entry).toBeVisible();
+
+    await section.getByTestId('collapse-section').click();
+    await expect(section).toHaveClass(/is-collapsed/);
+    await expect(subsection).toBeHidden();
+
+    await section.getByTestId('collapse-section').click();
+    await expect(subsection).toBeVisible();
+    await expect(entry).toBeVisible();
+  } finally {
+    temp.cleanup();
+  }
+});
+
 test('entry move modal moves entries to another parent container', async ({ page }, testInfo) => {
   const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
   const temp = makeTempClippingsCopy(sourceHtmlPath);
@@ -193,7 +230,7 @@ test('entry move modal moves entries to another parent container', async ({ page
     await setContentEditableText(sectionA.getByTestId('section-title'), 'A');
     await setContentEditableText(sectionB.getByTestId('section-title'), 'B');
 
-    await sectionA.locator(':scope > [data-testid="add-entry"]').click();
+    await addSectionEntry(sectionA);
     const movingEntry = sectionA.locator(':scope > .entry').first();
     await setContentEditableText(movingEntry.getByTestId('entry-title'), 'Move Me');
 
@@ -226,9 +263,9 @@ test('entry move buttons reorder entries within the same section', async ({ page
     const section = page.locator('[data-testid="app-root"] .section').first();
     await setContentEditableText(section.getByTestId('section-title'), 'S1');
 
-    await section.getByTestId('add-entry').click();
-    await section.getByTestId('add-entry').click();
-    await section.getByTestId('add-entry').click();
+    await addSectionEntry(section);
+    await addSectionEntry(section);
+    await addSectionEntry(section);
 
     const entries = section.locator(':scope > .entry');
     await expect(entries).toHaveCount(3);
@@ -265,7 +302,7 @@ test('highlight: add palette color, apply highlight, recolor, and remove', async
     await page.getByTestId('add-section').click();
     const section = page.locator('[data-testid="app-root"] .section').first();
     await setContentEditableText(section.getByTestId('section-title'), 'S1');
-    await section.getByTestId('add-entry').click();
+    await addSectionEntry(section);
     const entry = section.locator(':scope > .entry').first();
     await setContentEditableText(entry.getByTestId('entry-title'), 'E1');
     const textEditor = entry.getByTestId('entry-text');
@@ -347,8 +384,8 @@ test('tags autocomplete from existing tags and participate in search', async ({ 
     const section = page.locator('[data-testid="app-root"] .section').first();
     await setContentEditableText(section.getByTestId('section-title'), 'Tagged Section');
 
-    await section.getByTestId('add-entry').click();
-    await section.getByTestId('add-entry').click();
+    await addSectionEntry(section);
+    await addSectionEntry(section);
 
     const entries = section.locator(':scope > .entry');
     await expect(entries).toHaveCount(2);
@@ -428,8 +465,8 @@ test('tag search also covers quoted tags plus title and source matches', async (
     const section = page.locator('[data-testid="app-root"] .section').first();
     await setContentEditableText(section.getByTestId('section-title'), 'Search Section');
 
-    await section.getByTestId('add-entry').click();
-    await section.getByTestId('add-entry').click();
+    await addSectionEntry(section);
+    await addSectionEntry(section);
 
     const firstEntry = section.locator(':scope > .entry').nth(0);
     const secondEntry = section.locator(':scope > .entry').nth(1);
@@ -475,7 +512,7 @@ test('buildSavableHtml preserves tags and clears unsaved tag input draft text', 
     await page.getByTestId('add-section').click();
     const section = page.locator('[data-testid="app-root"] .section').first();
     await setContentEditableText(section.getByTestId('section-title'), 'Save Section');
-    await section.getByTestId('add-entry').click();
+    await addSectionEntry(section);
 
     const entry = section.locator(':scope > .entry').first();
     await setContentEditableText(entry.getByTestId('entry-title'), 'Save Entry');
@@ -505,7 +542,7 @@ test('tag editor stays collapsed until requested and done closes it after saving
     await page.getByTestId('add-section').click();
     const section = page.locator('[data-testid="app-root"] .section').first();
     await setContentEditableText(section.getByTestId('section-title'), 'Toggle Section');
-    await section.getByTestId('add-entry').click();
+    await addSectionEntry(section);
 
     const entry = section.locator(':scope > .entry').first();
     await expect(entry.getByTestId('entry-tag-row')).toHaveAttribute('data-editing-tags', 'false');
@@ -538,7 +575,7 @@ test('different tags receive stable distinct chip colors', async ({ page }, test
     await page.getByTestId('add-section').click();
     const section = page.locator('[data-testid="app-root"] .section').first();
     await setContentEditableText(section.getByTestId('section-title'), 'Color Section');
-    await section.getByTestId('add-entry').click();
+    await addSectionEntry(section);
 
     const entry = section.locator(':scope > .entry').first();
     await entry.getByTestId('entry-tag-edit-toggle').click();
@@ -579,9 +616,9 @@ test('search tag list shows counts and supports plain, ctrl/cmd, and shift click
     const section = page.locator('[data-testid="app-root"] .section').first();
     await setContentEditableText(section.getByTestId('section-title'), 'Filter Section');
 
-    await section.getByTestId('add-entry').click();
-    await section.getByTestId('add-entry').click();
-    await section.getByTestId('add-entry').click();
+    await addSectionEntry(section);
+    await addSectionEntry(section);
+    await addSectionEntry(section);
 
     const firstEntry = section.locator(':scope > .entry').nth(0);
     const secondEntry = section.locator(':scope > .entry').nth(1);
@@ -645,7 +682,7 @@ test('search tag list shows counts and supports plain, ctrl/cmd, and shift click
     await expect(secondEntry).toBeHidden();
     await expect(thirdEntry).toBeVisible();
 
-    await section.getByTestId('add-entry').click();
+    await addSectionEntry(section);
     const fourthEntry = section.locator(':scope > .entry').nth(3);
     await expect(page.getByTestId('entry-search')).toHaveValue('');
     await expect(filters.nth(0)).not.toHaveAttribute('data-active', 'true');
