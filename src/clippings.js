@@ -3060,8 +3060,16 @@
 
             const moveButton = e.target.closest('.entry-move-btn');
             if (moveButton) {
+                const movedEntry = moveButton.closest('.entry');
                 if (moveEntry(moveButton, moveButton.dataset.moveDirection)) {
                     triggerStructureUpdate();
+                    window.requestAnimationFrame(() => {
+                        window.requestAnimationFrame(() => {
+                            if (movedEntry && movedEntry.isConnected && !movedEntry.hidden) {
+                                movedEntry.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+                            }
+                        });
+                    });
                 }
                 return;
             }
