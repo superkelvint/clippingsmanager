@@ -189,7 +189,16 @@ test('sections and subsections can be collapsed and expanded', async ({ page }, 
     const section = page.locator('[data-testid="app-root"] .section').first();
     await section.getByTestId('add-subsection').click();
     const subsection = section.locator(':scope > .subsection-group').first();
-    await subsection.getByTestId('add-entry').click();
+    const addEntryTop = subsection.getByTestId('add-entry-top');
+    const addEntryBottom = subsection.locator(':scope > [data-testid="add-entry"]');
+    await expect(addEntryTop).toBeVisible();
+    await expect(addEntryBottom).toBeHidden();
+    await addEntryTop.click();
+    await expect(addEntryTop).toBeHidden();
+    await expect(addEntryBottom).toBeVisible();
+    await addEntryBottom.click();
+    await expect(addEntryTop).toBeVisible();
+    await expect(addEntryBottom).toBeVisible();
     const entry = subsection.locator(':scope > .entry').first();
     await setContentEditableText(entry.getByTestId('entry-title'), 'Nested entry');
 

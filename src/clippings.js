@@ -96,6 +96,9 @@
         const tagPaletteOrder = [0, 8, 16, 24, 4, 12, 20, 28, 2, 10, 18, 26, 6, 14, 22, 29, 1, 9, 17, 25, 5, 13, 21, 27, 3, 11, 19, 23, 7, 15];
         const UPDATE_IGNORE_SHA_KEY = 'clippings-update-ignore-sha';
         const LAST_UPDATED_COMMIT_KEY = 'clippings-last-updated-commit';
+        const FILE_HANDLE_DB_NAME = 'clippings-manager';
+        const FILE_HANDLE_STORE_NAME = 'settings';
+        const FILE_HANDLE_KEY = 'last-file-handle';
         const editSessionId = (window.crypto && typeof window.crypto.randomUUID === 'function')
             ? window.crypto.randomUUID()
             : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -387,6 +390,7 @@
                         multiple: false
                     };
                     [state.fileHandle] = await window.showOpenFilePicker(pickerOptions);
+                    await rememberFileHandle(state.fileHandle);
                 }
 
                 lockOk = await acquireEditLockForHandle(state.fileHandle);
@@ -427,12 +431,69 @@
 	            });
 	        }
 
-	        function safeParseJson(str) {
+        function safeParseJson(str) {
             try {
                 return JSON.parse(str);
             } catch {
                 return null;
             }
+        }
+
+        function openFileHandleDb() {
+            return new Promise((resolve, reject) => {
+                if (!window.indexedDB) {
+                    reject(new Error('IndexedDB is unavailable'));
+                    return;
+                }
+                const request = window.indexedDB.open(FILE_HANDLE_DB_NAME, 1);
+                request.onupgradeneeded = () => {
+                    request.result.createObjectStore(FILE_HANDLE_STORE_NAME);
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error || new Error('Could not open file handle storage'));
+            });
+        }
+
+        async function rememberFileHandle(handle) {
+            if (!handle) return;
+            try {
+                const db = await openFileHandleDb();
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction(FILE_HANDLE_STORE_NAME, 'readwrite');
+                    tx.objectStore(FILE_HANDLE_STORE_NAME).put(handle, FILE_HANDLE_KEY);
+                    tx.oncomplete = resolve;
+                    tx.onerror = () => reject(tx.error || new Error('Could not save file handle'));
+                });
+                db.close();
+            } catch (err) {
+                console.warn('Could not remember the selected file:', err);
+            }
+        }
+
+        async function getRememberedFileHandle() {
+            try {
+                const db = await openFileHandleDb();
+                const handle = await new Promise((resolve, reject) => {
+                    const tx = db.transaction(FILE_HANDLE_STORE_NAME, 'readonly');
+                    const request = tx.objectStore(FILE_HANDLE_STORE_NAME).get(FILE_HANDLE_KEY);
+                    request.onsuccess = () => resolve(request.result || null);
+                    request.onerror = () => reject(request.error || new Error('Could not read remembered file'));
+                });
+                db.close();
+                return handle;
+            } catch {
+                return null;
+            }
+        }
+
+        async function ensureFileWritePermission(handle) {
+            if (!handle || typeof handle.queryPermission !== 'function') return false;
+            let permission = await handle.queryPermission({ mode: 'readwrite' });
+            if (permission === 'granted') return true;
+            if (permission === 'prompt' && typeof handle.requestPermission === 'function') {
+                permission = await handle.requestPermission({ mode: 'readwrite' });
+            }
+            return permission === 'granted';
         }
 
         function getDocIdFromDom() {
@@ -2396,6 +2457,20 @@
 	            // Clean up any lingering inline styles that might have gotten saved previously
 	            const btn = document.getElementById('enable-edit-btn');
 	            if (btn && !state.isUnsupportedBrowser) btn.removeAttribute('style');
+
+            if (!state.isUnsupportedBrowser) {
+                const rememberedHandle = await getRememberedFileHandle();
+                if (rememberedHandle && typeof rememberedHandle.queryPermission === 'function') {
+                    try {
+                        if (await rememberedHandle.queryPermission({ mode: 'read' }) === 'granted') {
+                            await hydrateFromHandle(rememberedHandle);
+                        }
+                    } catch (err) {
+                        console.warn('Could not restore the previously selected file:', err);
+                    }
+                }
+            }
+
             removeLegacyContentDragHandles(document.getElementById('app-root'));
                 ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
                 ensureContainerCollapseControls(document.getElementById('app-root'));
@@ -2447,8 +2522,14 @@
 	                        types: [{ description: 'HTML File', accept: {'text/html': ['.html']} }],
 	                        multiple: false
 	                    };
-	                    [state.fileHandle] = await window.showOpenFilePicker(pickerOptions);
-	                }
+                    [state.fileHandle] = await window.showOpenFilePicker(pickerOptions);
+                    await rememberFileHandle(state.fileHandle);
+                }
+
+                if (!await ensureFileWritePermission(state.fileHandle)) {
+                    els.status.textContent = 'Write permission is required to edit this file';
+                    return;
+                }
 
 	                const lockOk = await acquireEditLockForHandle(state.fileHandle);
 	                if (!lockOk) return;
@@ -2636,11 +2717,11 @@
 
         function ensureSectionAddEntryTopButtons(root = document) {
             if (!root) return;
-            root.querySelectorAll('.section').forEach((section) => {
-                const addSubsection = section.querySelector(':scope > .add-subsection');
-                let addEntryTop = section.querySelector(':scope > .add-entry-top');
+            root.querySelectorAll(containerSelector).forEach((container) => {
+                const addSubsection = container.querySelector(':scope > .add-subsection');
+                let addEntryTop = container.querySelector(':scope > .add-entry-top');
                 if (!addEntryTop) {
-                    const heading = section.querySelector(':scope > h2');
+                    const heading = container.querySelector(container.classList.contains('section') ? ':scope > h2' : ':scope > h3');
                     if (heading) {
                         addEntryTop = createAddButton('add-btn add-entry-top', 'add-entry-top', '+ Add Entry');
                         if (addSubsection) {
@@ -2652,13 +2733,13 @@
                 } else if (addSubsection && addEntryTop.previousElementSibling !== addSubsection) {
                     addSubsection.insertAdjacentElement('afterend', addEntryTop);
                 }
-                if (!section.querySelector(':scope > .add-entry:not(.add-entry-top)')) {
-                    section.appendChild(createAddButton('add-btn add-entry', 'add-entry', '+ Add Entry'));
+                if (!container.querySelector(':scope > .add-entry:not(.add-entry-top)')) {
+                    container.appendChild(createAddButton('add-btn add-entry', 'add-entry', '+ Add Entry'));
                 }
                 if (addEntryTop) {
-                    const entryCount = section.querySelectorAll(':scope > .entry').length;
+                    const entryCount = container.querySelectorAll(':scope > .entry').length;
                     addEntryTop.hidden = entryCount === 1;
-                    const addEntryBottom = section.querySelector(':scope > .add-entry:not(.add-entry-top)');
+                    const addEntryBottom = container.querySelector(':scope > .add-entry:not(.add-entry-top)');
                     if (addEntryBottom) addEntryBottom.hidden = entryCount === 0;
                 }
             });
