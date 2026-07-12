@@ -665,6 +665,7 @@
                 document.getElementById('main-title').innerHTML = parsedTitle.innerHTML;
                 document.getElementById('app-root').innerHTML = parsedRoot.innerHTML;
                 removeLegacyContentDragHandles(document.getElementById('app-root'));
+                ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
                 syncContainerDepths();
 	                document.title = (parsedTitle.textContent || '').trim() || 'Untitled Document';
@@ -1362,8 +1363,14 @@
 	            triggerStructureUpdate();
 	        }
 
-        function getContainerInsertAnchor(container, preferredSelector = '.add-entry') {
+        function getContainerInsertAnchor(container, preferredSelector = '.add-entry', position = 'end') {
             if (!isContainerNode(container)) return null;
+            if (position === 'start') {
+                return container.querySelector(':scope > .entry') ||
+                    container.querySelector(':scope > .subsection-group') ||
+                    container.querySelector(':scope > .add-entry:not(.add-entry-top)') ||
+                    container.querySelector(':scope > .add-entry');
+            }
             return container.querySelector(`:scope > ${preferredSelector}`) ||
                 container.querySelector(':scope > .add-subsection') ||
                 container.querySelector(':scope > .add-entry');
@@ -2388,7 +2395,8 @@
 	            // Clean up any lingering inline styles that might have gotten saved previously
 	            const btn = document.getElementById('enable-edit-btn');
 	            if (btn && !state.isUnsupportedBrowser) btn.removeAttribute('style');
-	            removeLegacyContentDragHandles(document.getElementById('app-root'));
+            removeLegacyContentDragHandles(document.getElementById('app-root'));
+                ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
                 syncContainerDepths();
             
@@ -2485,7 +2493,8 @@
 	            scheduleAutosave();
 	        }
 
-	        function triggerStructureUpdate() {
+        function triggerStructureUpdate() {
+                ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
             syncContainerDepths();
 	            autoTitle();
@@ -2620,6 +2629,36 @@
             const appRoot = document.getElementById('app-root');
             if (!appRoot) return;
             buildContainerDepthMap(appRoot, 0);
+        }
+
+        function ensureSectionAddEntryTopButtons(root = document) {
+            if (!root) return;
+            root.querySelectorAll('.section').forEach((section) => {
+                const addSubsection = section.querySelector(':scope > .add-subsection');
+                let addEntryTop = section.querySelector(':scope > .add-entry-top');
+                if (!addEntryTop) {
+                    const heading = section.querySelector(':scope > h2');
+                    if (heading) {
+                        addEntryTop = createAddButton('add-btn add-entry-top', 'add-entry-top', '+ Add Entry');
+                        if (addSubsection) {
+                            addSubsection.insertAdjacentElement('afterend', addEntryTop);
+                        } else {
+                            heading.insertAdjacentElement('afterend', addEntryTop);
+                        }
+                    }
+                } else if (addSubsection && addEntryTop.previousElementSibling !== addSubsection) {
+                    addSubsection.insertAdjacentElement('afterend', addEntryTop);
+                }
+                if (!section.querySelector(':scope > .add-entry:not(.add-entry-top)')) {
+                    section.appendChild(createAddButton('add-btn add-entry', 'add-entry', '+ Add Entry'));
+                }
+                if (addEntryTop) {
+                    const entryCount = section.querySelectorAll(':scope > .entry').length;
+                    addEntryTop.hidden = entryCount === 1;
+                    const addEntryBottom = section.querySelector(':scope > .add-entry:not(.add-entry-top)');
+                    if (addEntryBottom) addEntryBottom.hidden = entryCount === 0;
+                }
+            });
         }
 
 	        function createTocDragHandle() {
@@ -2847,13 +2886,14 @@
 	            const title = createEditableSpan('section-title', 'section-title', 'Section Title...');
 	            const del = createDeleteButton('section', 'Delete Section', 'delete-section');
 	            toolbar.append(title, del);
-	            heading.appendChild(toolbar);
+            heading.appendChild(toolbar);
 
-	            const addSub = createAddButton('add-btn add-subsection', 'add-subsection', '+ Add Subsection');
-	            const addEntry = createAddButton('add-btn add-entry', 'add-entry', '+ Add Entry');
-	            section.append(heading, addSub, addEntry);
-	            return section;
-	        }
+            const addEntryTop = createAddButton('add-btn add-entry-top', 'add-entry-top', '+ Add Entry');
+            const addSub = createAddButton('add-btn add-subsection', 'add-subsection', '+ Add Subsection');
+            const addEntry = createAddButton('add-btn add-entry', 'add-entry', '+ Add Entry');
+            section.append(heading, addSub, addEntryTop, addEntry);
+            return section;
+        }
 
         function getSiblingEntry(entry, direction) {
             if (!entry) return null;
@@ -3013,12 +3053,19 @@
                 return;
             }
 
-	            if (e.target.classList.contains('add-entry')) {
+	            if (e.target.classList.contains('add-entry') || e.target.classList.contains('add-entry-top')) {
                     if (hasActiveEntrySearch()) {
                         clearEntrySearch();
                     }
 	                const newEntry = createEntryElement();
-	                e.target.parentNode.insertBefore(newEntry, e.target);
+                    const position = e.target.classList.contains('add-entry-top') ? 'start' : 'end';
+                    const container = e.target.parentNode;
+                    const insertAnchor = getContainerInsertAnchor(container, '.add-entry', position);
+                    if (insertAnchor) {
+                        container.insertBefore(newEntry, insertAnchor);
+                    } else {
+                        container.appendChild(newEntry);
+                    }
                     focusEditableAtEnd(newEntry.querySelector('.entry-title'));
 	                triggerStructureUpdate();
 	            }

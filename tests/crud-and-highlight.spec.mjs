@@ -75,6 +75,39 @@ test('add/delete sections, subsections, entries updates DOM and TOC', async ({ p
   }
 });
 
+test('top section add-entry control inserts entries at the start', async ({ page }, testInfo) => {
+  const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
+  const temp = makeTempClippingsCopy(sourceHtmlPath);
+  try {
+    await addInitShims(page);
+    await page.goto(fileUrl(temp.path));
+    await enableEditing(page);
+
+    await page.getByTestId('add-section').click();
+    const section = page.locator('[data-testid="app-root"] .section').first();
+    const addEntryTop = section.getByTestId('add-entry-top');
+    const addEntryBottom = section.locator(':scope > [data-testid="add-entry"]');
+    await expect(section.locator(':scope > button')).toHaveAttribute('data-testid', 'add-subsection');
+
+    await expect(addEntryTop).toBeVisible();
+    await expect(addEntryBottom).toBeHidden();
+    await addEntryTop.click();
+    await expect(addEntryTop).toBeHidden();
+    await expect(addEntryBottom).toBeVisible();
+    await addEntryBottom.click();
+    await expect(addEntryTop).toBeVisible();
+    await expect(addEntryBottom).toBeVisible();
+
+    const entries = section.locator(':scope > .entry');
+    await expect(entries).toHaveCount(2);
+    await setContentEditableText(entries.nth(0).getByTestId('entry-title'), 'Top');
+    await setContentEditableText(entries.nth(1).getByTestId('entry-title'), 'Bottom');
+    await expect(entries.getByTestId('entry-title')).toHaveText(['Top', 'Bottom']);
+  } finally {
+    temp.cleanup();
+  }
+});
+
 test('dragging TOC subsection reorders subsections within a section', async ({ page }, testInfo) => {
   const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
   const temp = makeTempClippingsCopy(sourceHtmlPath);
