@@ -126,10 +126,28 @@ Editing and saving depend on the browser File System Access API. In practice, th
 ## File Layout
 
 - [`clippings.html`](clippings.html): the complete application, UI, logic, and stored document content
-- [`clippings-migrate.py`](clippings-migrate.py): a zero-dependency Python script for migrating notes between versions
-- [`src/clippings.js`](src/clippings.js): source-of-truth JavaScript (merged into `clippings.html` on commit)
-- [`scripts/build-singlefile.mjs`](scripts/build-singlefile.mjs): merges `src/clippings.js` into `clippings.html`
+- [`migrate.html`](migrate.html): the browser-based migration page for moving notes into a newer template
+- [`src/clippings.js`](src/clippings.js): application coordinator, initialization, document actions, saving, updates, and shared event wiring
+- [`src/file-session.js`](src/file-session.js): file permissions, file identity tracking, guarded writes, and cross-tab editing locks
+- [`src/document-dom.js`](src/document-dom.js): document structure traversal, DOM normalization, section menus, collapse controls, and add-entry controls
+- [`src/toc.js`](src/toc.js): table-of-contents generation, nested TOC items, links, and drag handles
+- [`src/search-tags.js`](src/search-tags.js): search parsing/filtering, tag chips, tag editing, autocomplete, tag colors, and search highlighting
+- [`src/highlights.js`](src/highlights.js): highlight palette management, highlight popups, recoloring, unhighlighting, and formatting sanitization
+- [`src/editing.js`](src/editing.js): editing-mode listener lifecycle, keyboard shortcuts, paste/drop handling, and editing-related highlight interactions
+- [`scripts/build-singlefile.mjs`](scripts/build-singlefile.mjs): bundles the source modules and inlines the result into `clippings.html`
 - [`record-demo.mjs`](record-demo.mjs): deterministic CDP-based script that regenerates `clippings-demo.mp4`
+
+`clippings.html` is a generated, distributable artifact. Make source changes in `src/`, then run the build to update the inline application code. Do not edit the generated inline JavaScript directly.
+
+### Where to make common changes
+
+- Change section, subsection, entry, or collapse behavior: `document-dom.js` and the related actions in `clippings.js`
+- Change TOC labels, nesting, links, or drag handles: `toc.js`
+- Change search syntax, tag filters, autocomplete, or tag chips: `search-tags.js`
+- Change highlight colors, popup behavior, or paste sanitization: `highlights.js`
+- Change keyboard shortcuts, paste/drop events, or edit-mode listener setup: `editing.js`
+- Change saving, file permissions, or multi-tab safety: `file-session.js`
+- Change app startup, modals, reset behavior, self-update, or cross-feature coordination: `clippings.js`
 
 ## Typical Use
 
@@ -144,6 +162,32 @@ Editing and saving depend on the browser File System Access API. In practice, th
 ## No Setup
 
 For end users: there are no dependencies, no server, and no build step. Once you have the HTML file on your computer, the app works fully offline and keeps your notes in that local file.
+
+## Development Workflow
+
+Install the development dependencies, make changes in `src/`, and rebuild the standalone file:
+
+```bash
+npm install
+npm run build
+```
+
+For readable generated JavaScript during debugging:
+
+```bash
+npm run build:no-minify
+```
+
+The normal build bundles the ES modules and minifies the inline script. The unminified build is useful for inspection but should not be treated as a separate source file.
+
+Before committing, run:
+
+```bash
+npm run build
+npm test
+```
+
+The build updates `clippings.html`; review that generated change together with the source change. The E2E tests use temporary document copies and test file-handle shims so tests do not modify the repository HTML or real user files.
 
 ## Tests (Developer)
 
