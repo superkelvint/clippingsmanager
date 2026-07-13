@@ -457,6 +457,7 @@ export function createHighlights({
         initializeHighlightPalette,
         hideHighlightPopup,
         refreshHighlightPopup,
+        showHighlightPopupForMark,
         applyHighlight,
         applyColorToActiveHighlight,
         deleteActiveHighlight,
