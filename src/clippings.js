@@ -728,6 +728,7 @@
                 removeLegacyContentDragHandles(document.getElementById('app-root'));
                 ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
                 ensureContainerCollapseControls(document.getElementById('app-root'));
+                ensureSectionMenus(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
                 syncContainerDepths();
 	                document.title = (parsedTitle.textContent || '').trim() || 'Untitled Document';
@@ -2037,9 +2038,14 @@
             selection.addRange(range);
         }
 
-			        function bindBaseListeners() {
-			            if (state.baseListenersBound) return;
-			            state.baseListenersBound = true;
+	        function bindBaseListeners() {
+	            if (state.baseListenersBound) return;
+	            state.baseListenersBound = true;
+	            document.addEventListener('pointerdown', (e) => {
+	                if (!e.target.closest('.section-menu, .section-menu-toggle')) {
+	                    closeSectionMenus();
+	                }
+	            }, true);
 
                     const appRoot = document.getElementById('app-root');
 		            appRoot.addEventListener('input', (e) => {
@@ -2474,6 +2480,7 @@
             removeLegacyContentDragHandles(document.getElementById('app-root'));
                 ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
                 ensureContainerCollapseControls(document.getElementById('app-root'));
+                ensureSectionMenus(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
                 syncContainerDepths();
             
@@ -2579,6 +2586,7 @@
         function triggerStructureUpdate() {
                 ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
                 ensureContainerCollapseControls(document.getElementById('app-root'));
+                ensureSectionMenus(document.getElementById('app-root'));
                 enhanceEntries(document.getElementById('app-root'));
             syncContainerDepths();
 	            autoTitle();
@@ -2775,6 +2783,102 @@
                 }
                 syncContainerCollapseState(container);
             });
+        }
+
+        function createSectionMenu() {
+            const menu = document.createElement('div');
+            menu.className = 'section-menu';
+            menu.hidden = true;
+
+            for (const [position, label] of [['above', 'Add Section Above'], ['below', 'Add Section Below']]) {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'section-menu-item';
+                item.setAttribute('data-testid', 'section-menu-item');
+                item.dataset.sectionPosition = position;
+                item.dataset.sectionAction = `add-${position}`;
+                item.setAttribute('role', 'menuitem');
+                item.textContent = label;
+                menu.appendChild(item);
+            }
+            const deleteItem = createDeleteButton('section', 'Delete Section', 'delete-section');
+            deleteItem.classList.add('section-menu-item', 'section-menu-delete');
+            menu.appendChild(deleteItem);
+            return menu;
+        }
+
+        function ensureSectionMenus(root = document) {
+            if (!root) return;
+            root.querySelectorAll(':scope .section').forEach((section) => {
+                const heading = section.querySelector(':scope > h2');
+                const toolbar = heading && heading.querySelector(':scope > .item-toolbar');
+                if (!heading || !toolbar) return;
+
+                let toggle = toolbar.querySelector(':scope > .section-menu-toggle');
+                if (!toggle) {
+                    toggle = document.createElement('button');
+                    toggle.type = 'button';
+                    toggle.className = 'section-menu-toggle';
+                    toggle.setAttribute('data-testid', 'section-menu-toggle');
+                    toggle.setAttribute('aria-haspopup', 'menu');
+                    toggle.setAttribute('aria-expanded', 'false');
+                    toggle.setAttribute('aria-label', 'Section actions');
+                    toggle.title = 'Section actions';
+                    toggle.textContent = '⋮';
+                    toolbar.appendChild(toggle);
+                }
+
+                let menu = heading.querySelector(':scope > .section-menu');
+                if (!menu) {
+                    menu = createSectionMenu();
+                    menu.setAttribute('role', 'menu');
+                    heading.appendChild(menu);
+                }
+
+                const toolbarDelete = toolbar.querySelector(':scope > .delete-btn[data-delete-type="section"]');
+                if (toolbarDelete) toolbarDelete.remove();
+                if (!menu.querySelector(':scope > .delete-btn[data-delete-type="section"]')) {
+                    const deleteItem = createDeleteButton('section', 'Delete Section', 'delete-section');
+                    deleteItem.classList.add('section-menu-item', 'section-menu-delete');
+                    menu.appendChild(deleteItem);
+                }
+            });
+        }
+
+        function closeSectionMenus() {
+            document.querySelectorAll('.section-menu:not([hidden])').forEach((menu) => {
+                menu.hidden = true;
+                const section = menu.closest('.section');
+                if (section) section.classList.remove('has-open-section-menu');
+                const toggle = menu.parentElement && menu.parentElement.querySelector(':scope > .item-toolbar > .section-menu-toggle');
+                if (toggle) toggle.setAttribute('aria-expanded', 'false');
+            });
+        }
+
+        function toggleSectionMenu(toggle) {
+            const menu = toggle.closest('h2')?.querySelector(':scope > .section-menu');
+            if (!menu) return;
+            const willOpen = menu.hidden;
+            closeSectionMenus();
+            menu.hidden = !willOpen;
+            toggle.setAttribute('aria-expanded', String(willOpen));
+            if (willOpen) {
+                const section = toggle.closest('.section');
+                if (section) section.classList.add('has-open-section-menu');
+            }
+        }
+
+        function addSectionRelativeTo(section, position) {
+            if (!section || !section.parentNode) return;
+            const newSection = createSectionElement();
+            if (position === 'above') {
+                section.parentNode.insertBefore(newSection, section);
+            } else {
+                section.parentNode.insertBefore(newSection, section.nextSibling);
+            }
+            closeSectionMenus();
+            focusEditableAtEnd(newSection.querySelector('.section-title'));
+            triggerStructureUpdate();
         }
 
 	        function createTocDragHandle() {
@@ -3008,8 +3112,7 @@
             collapse.type = 'button';
             collapse.className = 'collapse-toggle';
             collapse.setAttribute('data-testid', 'collapse-section');
-            const del = createDeleteButton('section', 'Delete Section', 'delete-section');
-            toolbar.append(collapse, title, del);
+            toolbar.append(collapse, title);
             heading.appendChild(toolbar);
 
             const addEntryTop = createAddButton('add-btn add-entry-top', 'add-entry-top', '+ Add Entry');
@@ -3117,6 +3220,23 @@
 	        }
 
 	        document.body.addEventListener('click', (e) => {
+            const sectionMenuAction = e.target.closest('.section-menu-item[data-section-action]');
+	            if (sectionMenuAction) {
+	                const section = sectionMenuAction.closest('.section');
+	                if (document.body.classList.contains('is-editing') && section) {
+	                    addSectionRelativeTo(section, sectionMenuAction.dataset.sectionAction === 'add-above' ? 'above' : 'below');
+	                }
+	                return;
+	            }
+
+	            const sectionMenuToggle = e.target.closest('.section-menu-toggle');
+	            if (sectionMenuToggle) {
+	                toggleSectionMenu(sectionMenuToggle);
+	                return;
+	            }
+
+	            if (!e.target.closest('.section-menu')) closeSectionMenus();
+
 	            const collapseButton = e.target.closest('.collapse-toggle');
 	            if (collapseButton) {
 	                const container = collapseButton.closest(containerSelector);

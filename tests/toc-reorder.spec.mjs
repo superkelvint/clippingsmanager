@@ -84,3 +84,35 @@ test('dragging TOC entry reorders entries within a section', async ({ page }, te
     temp.cleanup();
   }
 });
+
+test('section menu inserts sections above and below', async ({ page }, testInfo) => {
+  const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
+  const temp = makeTempClippingsCopy(sourceHtmlPath);
+  try {
+    await addInitShims(page);
+    await page.goto(fileUrl(temp.path));
+    await enableEditing(page);
+
+    await page.getByTestId('add-section').click();
+    const section = page.locator('[data-testid="app-root"] .section').first();
+    await setContentEditableText(section.getByTestId('section-title'), 'Middle');
+
+    await section.getByTestId('section-menu-toggle').click();
+    await expect(section.getByTestId('section-menu-item').filter({ hasText: 'Add Section Above' })).toBeVisible();
+    await expect(section.getByTestId('delete-section')).toBeVisible();
+    await page.getByTestId('main-title').click();
+    await expect(section.getByTestId('delete-section')).toBeHidden();
+    await section.getByTestId('section-menu-toggle').click();
+    await section.getByTestId('section-menu-item').filter({ hasText: 'Add Section Above' }).click();
+    await setContentEditableText(page.locator('[data-testid="app-root"] .section').first().getByTestId('section-title'), 'Above');
+
+    const middle = page.locator('[data-testid="app-root"] .section').filter({ hasText: 'Middle' }).first();
+    await middle.getByTestId('section-menu-toggle').click();
+    await middle.getByTestId('section-menu-item').filter({ hasText: 'Add Section Below' }).click();
+    await setContentEditableText(page.locator('[data-testid="app-root"] .section').nth(2).getByTestId('section-title'), 'Below');
+
+    await expect(page.locator('[data-testid="app-root"] > .section .section-title')).toHaveText(['Above', 'Middle', 'Below']);
+  } finally {
+    temp.cleanup();
+  }
+});

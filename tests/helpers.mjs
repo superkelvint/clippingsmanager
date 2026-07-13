@@ -61,7 +61,7 @@ export async function enableEditing(page) {
 }
 
 export async function addSectionEntry(section) {
-  const topButton = section.getByTestId('add-entry-top');
+  const topButton = section.locator(':scope > [data-testid="add-entry-top"]');
   const entryCount = await section.locator(':scope > .entry').count();
   if (entryCount === 0 && await topButton.isVisible()) {
     await topButton.click();

@@ -37,7 +37,7 @@ test('add/delete sections, subsections, entries updates DOM and TOC', async ({ p
     await setContentEditableText(subsections.first().getByTestId('subsection-title'), 'Sub1');
 
     // Add one entry in subsection and one entry at section root.
-    await subsections.first().getByTestId('add-entry').click();
+    await addSectionEntry(subsections.first());
     // Avoid strict-mode ambiguity: section also contains nested add-entry buttons inside subsections.
     await addSectionEntry(s1);
 
@@ -68,6 +68,7 @@ test('add/delete sections, subsections, entries updates DOM and TOC', async ({ p
     await expect(page.getByTestId('toc')).not.toContainText('E1');
 
     // Delete S2.
+    await sections.nth(1).getByTestId('section-menu-toggle').click();
     await sections.nth(1).getByTestId('delete-section').click();
     await expect(page.locator('[data-testid="app-root"] .section')).toHaveCount(1);
     await expect(page.getByTestId('toc')).not.toContainText('S2');
@@ -163,7 +164,7 @@ test('nested subsections render recursively in DOM and TOC', async ({ page }, te
     const sub3 = sub2.locator(':scope > .subsection-group').first();
     await setContentEditableText(sub3.getByTestId('subsection-title'), 'Level 3');
 
-    await sub3.locator(':scope > [data-testid="add-entry"]').click();
+    await addSectionEntry(sub3);
     const deepEntry = sub3.locator(':scope > .entry').first();
     await setContentEditableText(deepEntry.getByTestId('entry-title'), 'Deep Entry');
 
