@@ -1,4 +1,6 @@
 
+import { createFileSession } from './file-session.js';
+
 	        const els = {
 	            status: document.getElementById('save-status'),
 	            helpModal: document.getElementById('help-modal'),
@@ -105,17 +107,6 @@
         const tagPaletteOrder = [0, 8, 16, 24, 4, 12, 20, 28, 2, 10, 18, 26, 6, 14, 22, 29, 1, 9, 17, 25, 5, 13, 21, 27, 3, 11, 19, 23, 7, 15];
         const UPDATE_IGNORE_SHA_KEY = 'clippings-update-ignore-sha';
         const LAST_UPDATED_COMMIT_KEY = 'clippings-last-updated-commit';
-        const FILE_HANDLE_DB_NAME = 'clippings-manager';
-        const FILE_HANDLE_STORE_NAME = 'settings';
-        const FILE_HANDLE_REGISTRY_KEY = 'file-handle-registry';
-        const editSessionId = (window.crypto && typeof window.crypto.randomUUID === 'function')
-            ? window.crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        const EDIT_LOCK_PREFIX = 'clippings-edit-lock:';
-	        const EDIT_LOCK_CHANNEL = 'clippings-edit-lock';
-	        const EDIT_LOCK_HEARTBEAT_MS = 4000;
-	        const EDIT_LOCK_STALE_MS = 12000;
-
         function getMetaContent(name) {
             const el = document.querySelector(`meta[name="${name}"]`);
             return el && el.content ? String(el.content).trim() : '';
@@ -407,11 +398,11 @@
                     [state.fileHandle] = await window.showOpenFilePicker(pickerOptions);
                 }
 
-                if (!hasEditLock()) {
-                    lockOk = await acquireEditLockForHandle(state.fileHandle);
+                if (!fileSession.hasEditLock()) {
+                    lockOk = await fileSession.acquire(state.fileHandle);
                     acquiredForUpdate = lockOk;
                 }
-                if (!lockOk || !hasEditLock()) return;
+                if (!lockOk || !fileSession.hasEditLock()) return;
 
                 const currentSavableHtml = buildSavableHtml();
                 const merged = mergeUserContentIntoTemplate({
@@ -419,16 +410,16 @@
                     upstreamHtml: state.updateCandidateHtml
                 });
 
-                if (!hasEditLock()) return;
+                if (!fileSession.hasEditLock()) return;
                 const updateHandle = state.fileHandle;
                 const updateLockKey = state.editLockKey;
                 const writable = await updateHandle.createWritable();
-                if (state.fileHandle !== updateHandle || state.editLockKey !== updateLockKey || !hasEditLock()) {
+                if (state.fileHandle !== updateHandle || state.editLockKey !== updateLockKey || !fileSession.hasEditLock()) {
                     if (typeof writable.abort === 'function') await writable.abort();
                     return;
                 }
                 await writable.write(merged);
-                if (state.fileHandle !== updateHandle || state.editLockKey !== updateLockKey || !hasEditLock()) {
+                if (state.fileHandle !== updateHandle || state.editLockKey !== updateLockKey || !fileSession.hasEditLock()) {
                     if (typeof writable.abort === 'function') await writable.abort();
                     return;
                 }
@@ -448,7 +439,7 @@
                 els.status.textContent = 'Update failed (see console).';
             } finally {
                 if (acquiredForUpdate) {
-                    try { releaseEditLock(); } catch {}
+                    try { fileSession.release(); } catch {}
                 }
             }
         }
@@ -461,301 +452,8 @@
 	            });
 	        }
 
-        function safeParseJson(str) {
-            try {
-                return JSON.parse(str);
-            } catch {
-                return null;
-            }
-        }
 
-        function openFileHandleDb() {
-            return new Promise((resolve, reject) => {
-                if (!window.indexedDB) {
-                    reject(new Error('IndexedDB is unavailable'));
-                    return;
-                }
-                const request = window.indexedDB.open(FILE_HANDLE_DB_NAME, 1);
-                request.onupgradeneeded = () => {
-                    request.result.createObjectStore(FILE_HANDLE_STORE_NAME);
-                };
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error || new Error('Could not open file handle storage'));
-            });
-        }
-
-        async function getFileHandleIdentity(handle) {
-            // Test-only handles cannot be structured-cloned into IndexedDB.
-            // Real FileSystemFileHandles always use the registry below.
-            if (handle && typeof handle.__clippings_test_file_id === 'string' && handle.__clippings_test_file_id) {
-                return `test:${handle.__clippings_test_file_id}`;
-            }
-            if (!handle || typeof handle.isSameEntry !== 'function') return null;
-
-            const getRegistry = async (db) => await new Promise((resolve, reject) => {
-                const tx = db.transaction(FILE_HANDLE_STORE_NAME, 'readonly');
-                const request = tx.objectStore(FILE_HANDLE_STORE_NAME).get(FILE_HANDLE_REGISTRY_KEY);
-                request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
-                request.onerror = () => reject(request.error || new Error('Could not read file identity registry'));
-            });
-
-            const register = async () => {
-                const db = await openFileHandleDb();
-                try {
-                    const entries = await getRegistry(db);
-                    for (const entry of entries) {
-                        if (!entry || !entry.id || !entry.handle) continue;
-                        try {
-                            if (await entry.handle.isSameEntry(handle)) return String(entry.id);
-                        } catch {
-                            // Never invent a second identity when an existing
-                            // file comparison is unavailable; that could allow
-                            // two tabs to edit the same file concurrently.
-                            return null;
-                        }
-                    }
-
-                    const id = window.crypto && typeof window.crypto.randomUUID === 'function'
-                        ? window.crypto.randomUUID()
-                        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-                    entries.push({ id, handle });
-                    await new Promise((resolve, reject) => {
-                        const tx = db.transaction(FILE_HANDLE_STORE_NAME, 'readwrite');
-                        tx.objectStore(FILE_HANDLE_STORE_NAME).put(entries, FILE_HANDLE_REGISTRY_KEY);
-                        tx.oncomplete = resolve;
-                        tx.onerror = () => reject(tx.error || new Error('Could not save file identity'));
-                    });
-                    return id;
-                } finally {
-                    db.close();
-                }
-            };
-
-            // Serialize registry updates so two tabs selecting the same file at
-            // the same time cannot create two identities for one file.
-            if (navigator.locks && typeof navigator.locks.request === 'function') {
-                try {
-                    return await navigator.locks.request('clippings-file-identity-registry', async () => register());
-                } catch {
-                    return null;
-                }
-            }
-            return null;
-        }
-
-        async function ensureFileWritePermission(handle) {
-            if (!handle || typeof handle.queryPermission !== 'function') return false;
-            let permission = await handle.queryPermission({ mode: 'readwrite' });
-            if (permission === 'granted') return true;
-            if (permission === 'prompt' && typeof handle.requestPermission === 'function') {
-                permission = await handle.requestPermission({ mode: 'readwrite' });
-            }
-            return permission === 'granted';
-        }
-
-        async function computeEditLockKey(handle) {
-            const identity = await getFileHandleIdentity(handle);
-            if (!identity) return null;
-            return `file-handle:${identity}`;
-        }
-
-        function readEditLock(key) {
-            if (!key) return null;
-            try {
-                return safeParseJson(localStorage.getItem(EDIT_LOCK_PREFIX + key) || '');
-            } catch {
-                return null;
-            }
-        }
-
-	        function writeEditLock(key, lock) {
-            if (!key) return;
-	            try {
-	                localStorage.setItem(EDIT_LOCK_PREFIX + key, JSON.stringify(lock));
-	            } catch {
-	                state.editLockDisabled = true;
-	            }
-	        }
-
-	        function clearEditLock(key) {
-            if (!key) return;
-	            try {
-	                localStorage.removeItem(EDIT_LOCK_PREFIX + key);
-	            } catch {
-	                state.editLockDisabled = true;
-	            }
-	        }
-
-        function isEditLockStale(lock) {
-            if (!lock || typeof lock.ts !== 'number') return true;
-            return (Date.now() - lock.ts) > EDIT_LOCK_STALE_MS;
-        }
-
-	        function hasEditLock() {
-	            if (state.editLockDisabled || !state.editLockWebHeld) return false;
-	            if (!state.editLockKey) return false;
-	            const lock = readEditLock(state.editLockKey);
-	            return !!(lock && lock.owner === editSessionId && !isEditLockStale(lock));
-	        }
-
-	        function announceEditLock(type) {
-	            if (!state.editLockKey) return;
-	            try {
-	                if (!state.editLockChannel && typeof window.BroadcastChannel === 'function') {
-	                    state.editLockChannel = new BroadcastChannel(EDIT_LOCK_CHANNEL);
-	                    state.editLockChannel.onmessage = (ev) => {
-	                        const msg = ev && ev.data ? ev.data : null;
-	                        if (!msg || msg.key !== state.editLockKey) return;
-	                        if (msg.owner && msg.owner !== editSessionId && document.body.classList.contains('is-editing')) {
-	                            handleLostEditLock(msg);
-	                        }
-	                    };
-	                }
-	                if (state.editLockChannel) {
-	                    state.editLockChannel.postMessage({
-	                        type,
-	                        key: state.editLockKey,
-	                        owner: editSessionId,
-	                        ts: Date.now(),
-	                        title: (document.title || '').slice(0, 120)
-	                    });
-	                }
-	            } catch {}
-	        }
-
-	        function stopEditLockHeartbeat() {
-	            if (state.editLockHeartbeat) {
-	                clearInterval(state.editLockHeartbeat);
-	                state.editLockHeartbeat = null;
-	            }
-	        }
-
-        function handleLostEditLock(lock) {
-            stopEditLockHeartbeat();
-            // Do not clear the lock; we aren't the owner anymore.
-            if (document.body.classList.contains('is-editing')) {
-                releaseEditLock();
-                setEditingMode(false);
-            }
-            const ownerTitle = lock && lock.title ? ` ("${lock.title}")` : '';
-            els.status.textContent = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
-        }
-
-	        function startEditLockHeartbeat() {
-	            if (state.editLockDisabled) return;
-	            stopEditLockHeartbeat();
-	            state.editLockHeartbeat = setInterval(() => {
-	                if (!state.editLockKey) return;
-	                const current = readEditLock(state.editLockKey);
-	                if (current && current.owner && current.owner !== editSessionId && !isEditLockStale(current)) {
-	                    handleLostEditLock(current);
-	                    return;
-	                }
-	                writeEditLock(state.editLockKey, {
-	                    owner: editSessionId,
-	                    ts: Date.now(),
-	                    title: (document.title || '').slice(0, 120)
-	                });
-	                announceEditLock('heartbeat');
-	            }, EDIT_LOCK_HEARTBEAT_MS);
-	        }
-
-	        async function acquireWebEditLock(key) {
-            if (!navigator.locks || typeof navigator.locks.request !== 'function') return false;
-
-            const lockName = `clippings-edit:${key}`;
-            let resolveAcquired;
-            let rejectAcquired;
-            const acquired = new Promise((resolve, reject) => {
-                resolveAcquired = resolve;
-                rejectAcquired = reject;
-            });
-            let releaseLock;
-            const lockToken = {};
-            const held = new Promise((resolve) => {
-                releaseLock = resolve;
-            });
-
-            navigator.locks.request(lockName, { ifAvailable: true }, async (lock) => {
-                if (!lock) {
-                    resolveAcquired(false);
-                    return false;
-                }
-                state.editLockWebHeld = true;
-                state.editLockWebRelease = releaseLock;
-                state.editLockWebToken = lockToken;
-                resolveAcquired(true);
-                await held;
-                if (state.editLockWebToken === lockToken) {
-                    state.editLockWebHeld = false;
-                    state.editLockWebRelease = null;
-                    state.editLockWebToken = null;
-                }
-                return true;
-            }).catch((err) => {
-                if (state.editLockWebToken === lockToken) {
-                    state.editLockWebHeld = false;
-                    state.editLockWebRelease = null;
-                    state.editLockWebToken = null;
-                }
-                rejectAcquired(err);
-            });
-
-            try {
-                return await acquired;
-            } catch {
-                return false;
-            }
-        }
-
-        async function acquireEditLockForHandle(handle) {
-            state.editLockDisabled = false;
-            state.editLockKey = await computeEditLockKey(handle);
-            if (state.editLockDisabled || !navigator.locks || typeof navigator.locks.request !== 'function') {
-                state.editLockKey = null;
-                els.status.textContent = 'Editing unavailable: this browser cannot guarantee single-tab access';
-                return false;
-            }
-            if (!await acquireWebEditLock(state.editLockKey)) {
-                state.editLockKey = null;
-                els.status.textContent = 'Read-Only Mode: another tab is editing this file';
-                return false;
-            }
-	            // Web Locks is authoritative. A surviving localStorage record can
-	            // belong to a tab that has already closed, so it must not block a
-	            // newly acquired Web Lock; it is overwritten below.
-	            writeEditLock(state.editLockKey, {
-	                owner: editSessionId,
-	                ts: Date.now(),
-	                title: (document.title || '').slice(0, 120)
-            });
-            if (state.editLockDisabled) {
-                releaseEditLock();
-                els.status.textContent = 'Editing unavailable: could not establish a persistent lock';
-                return false;
-            }
-            startEditLockHeartbeat();
-            announceEditLock('acquire');
-            return true;
-        }
-
-	        function releaseEditLock() {
-	            if (state.editLockKey) {
-	                const current = readEditLock(state.editLockKey);
-	                if (current && current.owner === editSessionId) {
-	                    clearEditLock(state.editLockKey);
-	                    announceEditLock('release');
-	                }
-	            }
-	            stopEditLockHeartbeat();
-	            state.editLockKey = null;
-            if (state.editLockWebRelease) state.editLockWebRelease();
-            state.editLockWebRelease = null;
-            state.editLockWebHeld = false;
-            state.editLockWebToken = null;
-        }
-
-		        function setEditingMode(isEditing) {
+	        function setEditingMode(isEditing) {
 	            document.body.classList.toggle('is-editing', isEditing);
 	            document.querySelectorAll(editableSelector).forEach((el) => {
 	                el.setAttribute('contenteditable', isEditing ? 'true' : 'false');
@@ -782,6 +480,14 @@
 	            if (resetBtn) resetBtn.hidden = !isEditing;
 	            els.status.textContent = isEditing ? 'Editing Enabled - Auto-saving...' : 'Read-Only Mode';
 	        }
+
+        const fileSession = createFileSession({
+            state,
+            getDocumentTitle: () => document.title,
+            isEditing: () => document.body.classList.contains('is-editing'),
+            onLostLock: () => setEditingMode(false),
+            setStatusText: (text) => { els.status.textContent = text; },
+        });
 
 	        function setHighlightPanelOpen(isOpen) {
 	            if (!els.highlightPanel || !els.highlightToggleBtn) return;
@@ -1502,7 +1208,7 @@
 	        }
 
 	        function resetDocumentNow() {
-	            if (state.editLockDisabled || !hasEditLock()) {
+	            if (state.editLockDisabled || !fileSession.hasEditLock()) {
                 closeResetModal();
                 els.status.textContent = 'Reset blocked: this tab does not hold the file lock';
                 return;
@@ -2532,6 +2238,10 @@
             return "<!DOCTYPE html>\n" + snapshot.outerHTML;
         }
 
+        // Preserve the legacy browser-global hook used by the E2E tests and
+        // lightweight integrations, even though the bundled app is scoped.
+        window.buildSavableHtml = buildSavableHtml;
+
 	        // SELF-HEALING: Force reset to read-only mode on every page load
 	        window.addEventListener('DOMContentLoaded', async () => {
 	            state.tocIncludeEntries = localStorage.getItem('toc-include-entries') === '1';
@@ -2567,12 +2277,7 @@
 	            const btn = document.getElementById('enable-edit-btn');
 	            if (btn && !state.isUnsupportedBrowser) btn.removeAttribute('style');
 
-            removeLegacyContentDragHandles(document.getElementById('app-root'));
-                ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
-                ensureContainerCollapseControls(document.getElementById('app-root'));
-                ensureSectionMenus(document.getElementById('app-root'));
-                enhanceEntries(document.getElementById('app-root'));
-                syncContainerDepths();
+                normalizeDocument();
             
 	            bindBaseListeners();
 	            observeInlineToc();
@@ -2583,21 +2288,21 @@
 
 	        window.addEventListener('storage', (e) => {
 	            if (!state.editLockKey) return;
-	            if (!e || e.key !== (EDIT_LOCK_PREFIX + state.editLockKey)) return;
-	            const next = e.newValue ? safeParseJson(e.newValue) : null;
+	            if (!e || e.key !== fileSession.storageKey(state.editLockKey)) return;
+	            const next = fileSession.readLock(state.editLockKey);
 	            if (!next || !next.owner) return;
-	            if (next.owner !== editSessionId && !isEditLockStale(next) && document.body.classList.contains('is-editing')) {
-	                handleLostEditLock(next);
+	            if (next.owner !== fileSession.sessionId && !fileSession.isStale(next) && document.body.classList.contains('is-editing')) {
+	                fileSession.handleLostLock(next);
 	            }
 	        });
 
         window.addEventListener('beforeunload', () => {
-            try { releaseEditLock(); } catch {}
+            try { fileSession.release(); } catch {}
         });
 
 	        document.getElementById('enable-edit-btn').addEventListener('click', async () => {
             if (document.body.classList.contains('is-editing')) {
-                releaseEditLock();
+                fileSession.release();
                 setEditingMode(false);
                 return;
             }
@@ -2612,12 +2317,12 @@
                     [state.fileHandle] = await window.showOpenFilePicker(pickerOptions);
                 }
 
-                if (!await ensureFileWritePermission(state.fileHandle)) {
+                if (!await fileSession.ensureWritePermission(state.fileHandle)) {
                     els.status.textContent = 'Write permission is required to edit this file';
                     return;
                 }
 
-	                const lockOk = await acquireEditLockForHandle(state.fileHandle);
+	                const lockOk = await fileSession.acquire(state.fileHandle);
 	                if (!lockOk) return;
 
 	                setEditingMode(true);
@@ -2663,11 +2368,7 @@
 	        }
 
         function triggerStructureUpdate() {
-                ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
-                ensureContainerCollapseControls(document.getElementById('app-root'));
-                ensureSectionMenus(document.getElementById('app-root'));
-                enhanceEntries(document.getElementById('app-root'));
-            syncContainerDepths();
+            normalizeDocument();
 	            autoTitle();
 	            scheduleGenerateTOC();
 	            applyEntrySearch();
@@ -2684,7 +2385,7 @@
         async function saveToDisk() {
             if (!state.fileHandle) return;
             if (!document.body.classList.contains('is-editing')) return;
-            if (!hasEditLock()) {
+            if (!fileSession.hasEditLock()) {
 	                els.status.textContent = 'Save blocked: another tab is editing this file';
 	                return;
 	            }
@@ -2700,7 +2401,7 @@
                 state.fileHandle === saveHandle &&
                 state.editLockKey === saveLockKey &&
                 document.body.classList.contains('is-editing') &&
-                hasEditLock()
+                fileSession.hasEditLock()
             );
             let writable = null;
             try {
@@ -2884,6 +2585,16 @@
                 }
                 syncContainerCollapseState(container);
             });
+        }
+
+        function normalizeDocument(root = document.getElementById('app-root')) {
+            if (!root) return;
+            removeLegacyContentDragHandles(root);
+            ensureSectionAddEntryTopButtons(root);
+            ensureContainerCollapseControls(root);
+            ensureSectionMenus(root);
+            enhanceEntries(root);
+            syncContainerDepths();
         }
 
         function createSectionMenu() {

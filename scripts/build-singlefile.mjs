@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
 import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
-import { transformSync } from 'esbuild';
+import { buildSync } from 'esbuild';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const rootDir = path.resolve(path.dirname(scriptPath), '..');
@@ -225,13 +225,21 @@ async function main() {
   const buildSha = computeBuildId({ html: htmlRaw, js: jsRaw });
   const templateCommit = getGitHeadCommitSha();
   let js = normalizeNewlines(jsRaw);
-  if (shouldMinify()) {
-    const result = transformSync(js, {
-      loader: 'js',
-      minify: true,
+  {
+    const result = buildSync({
+      stdin: {
+        contents: js,
+        resolveDir: path.join(rootDir, 'src'),
+        sourcefile: 'src/clippings.js',
+        loader: 'js',
+      },
+      bundle: true,
+      format: 'iife',
+      minify: shouldMinify(),
       target: 'es2020',
+      write: false,
     });
-    js = result.code;
+    js = result.outputFiles[0].text;
   }
   js = escapeScriptClose(js);
 
