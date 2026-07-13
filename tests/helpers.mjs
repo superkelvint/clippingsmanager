@@ -20,25 +20,33 @@ export function makeTempClippingsCopy(sourcePath) {
   };
 }
 
-export async function addInitShims(page) {
-  await page.addInitScript(() => {
-    let storedHtml = '';
+export async function addInitShims(page, { fileId = null } = {}) {
+  await page.addInitScript((configuredFileId) => {
+    const storageKey = 'clippings-test-file:' + encodeURIComponent(
+      configuredFileId || window.location.pathname
+    );
+    const readStoredHtml = () => localStorage.getItem(storageKey) || '';
     Object.defineProperty(window, '__clippings_test_lastWrittenHtml', {
       configurable: true,
-      get: () => storedHtml,
+      get: readStoredHtml,
     });
     const fakeHandle = {
+      name: configuredFileId || window.location.pathname,
+      __clippings_test_file_id: configuredFileId || window.location.pathname,
+      async isSameEntry(other) {
+        return !!other && other.name === this.name;
+      },
       async queryPermission() {
         return 'granted';
       },
       async getFile() {
-        const html = storedHtml || '<!DOCTYPE html>' + document.documentElement.outerHTML;
+        const html = readStoredHtml() || '<!DOCTYPE html>' + document.documentElement.outerHTML;
         return new File([html], 'clippings.html', { type: 'text/html' });
       },
       async createWritable() {
         return {
           async write(content) {
-            storedHtml = String(content);
+            localStorage.setItem(storageKey, String(content));
           },
           async close() {}
         };
@@ -52,7 +60,7 @@ export async function addInitShims(page) {
     });
 
     window.confirm = () => true;
-  });
+  }, fileId);
 }
 
 export async function enableEditing(page) {

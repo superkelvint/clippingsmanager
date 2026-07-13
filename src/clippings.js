@@ -62,6 +62,9 @@
 	            editLockHeartbeat: null,
 	            editLockChannel: null,
 	            editLockDisabled: false,
+                    editLockWebHeld: false,
+                    editLockWebRelease: null,
+                    editLockWebToken: null,
 	        };
 
         const editableSelector = '[contenteditable]';
@@ -105,6 +108,7 @@
         const FILE_HANDLE_DB_NAME = 'clippings-manager';
         const FILE_HANDLE_STORE_NAME = 'settings';
         const FILE_HANDLE_KEY = 'last-file-handle';
+        const FILE_HANDLE_REGISTRY_KEY = 'file-handle-registry';
         const editSessionId = (window.crypto && typeof window.crypto.randomUUID === 'function')
             ? window.crypto.randomUUID()
             : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -279,10 +283,12 @@
             const currentRoot = currentDoc.getElementById('app-root');
             const currentPalette = currentDoc.getElementById('highlight-palette-data');
             const currentDocId = currentDoc.querySelector('meta[name="clippings-doc-id"]');
+            const currentDocumentTitle = currentDoc.querySelector('title');
 
             const upstreamTitle = upstreamDoc.getElementById('main-title');
             const upstreamRoot = upstreamDoc.getElementById('app-root');
             const upstreamPalette = upstreamDoc.getElementById('highlight-palette-data');
+            const upstreamDocumentTitle = upstreamDoc.querySelector('title');
 
             if (!upstreamTitle || !upstreamRoot) {
                 throw new Error('Upstream template is missing required elements (#main-title or #app-root).');
@@ -293,6 +299,9 @@
 
             upstreamTitle.textContent = currentTitle.textContent || '';
             upstreamRoot.innerHTML = currentRoot.innerHTML;
+            if (currentDocumentTitle && upstreamDocumentTitle) {
+                upstreamDocumentTitle.textContent = currentDocumentTitle.textContent || 'Clippings Manager';
+            }
 
             if (upstreamPalette && currentPalette) {
                 upstreamPalette.textContent = currentPalette.textContent || '[]';
@@ -388,6 +397,7 @@
             els.status.textContent = 'Updating template...';
 
             let lockOk = true;
+            let acquiredForUpdate = false;
             try {
                 if (!state.fileHandle) {
                     const pickerOptions = {
@@ -399,8 +409,11 @@
                     await rememberFileHandle(state.fileHandle);
                 }
 
-                lockOk = await acquireEditLockForHandle(state.fileHandle);
-                if (!lockOk) return;
+                if (!hasEditLock()) {
+                    lockOk = await acquireEditLockForHandle(state.fileHandle);
+                    acquiredForUpdate = lockOk;
+                }
+                if (!lockOk || !hasEditLock()) return;
 
                 const currentSavableHtml = buildSavableHtml();
                 const merged = mergeUserContentIntoTemplate({
@@ -408,8 +421,19 @@
                     upstreamHtml: state.updateCandidateHtml
                 });
 
-                const writable = await state.fileHandle.createWritable();
+                if (!hasEditLock()) return;
+                const updateHandle = state.fileHandle;
+                const updateLockKey = state.editLockKey;
+                const writable = await updateHandle.createWritable();
+                if (state.fileHandle !== updateHandle || state.editLockKey !== updateLockKey || !hasEditLock()) {
+                    if (typeof writable.abort === 'function') await writable.abort();
+                    return;
+                }
                 await writable.write(merged);
+                if (state.fileHandle !== updateHandle || state.editLockKey !== updateLockKey || !hasEditLock()) {
+                    if (typeof writable.abort === 'function') await writable.abort();
+                    return;
+                }
                 await writable.close();
 
                 if (latestCommitSha) {
@@ -425,7 +449,9 @@
                 console.error('Update failed:', err);
                 els.status.textContent = 'Update failed (see console).';
             } finally {
-                try { releaseEditLock(); } catch {}
+                if (acquiredForUpdate) {
+                    try { releaseEditLock(); } catch {}
+                }
             }
         }
 
@@ -492,6 +518,65 @@
             }
         }
 
+        async function getFileHandleIdentity(handle) {
+            // Test-only handles cannot be structured-cloned into IndexedDB.
+            // Real FileSystemFileHandles always use the registry below.
+            if (handle && typeof handle.__clippings_test_file_id === 'string' && handle.__clippings_test_file_id) {
+                return `test:${handle.__clippings_test_file_id}`;
+            }
+            if (!handle || typeof handle.isSameEntry !== 'function') return null;
+
+            const getRegistry = async (db) => await new Promise((resolve, reject) => {
+                const tx = db.transaction(FILE_HANDLE_STORE_NAME, 'readonly');
+                const request = tx.objectStore(FILE_HANDLE_STORE_NAME).get(FILE_HANDLE_REGISTRY_KEY);
+                request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+                request.onerror = () => reject(request.error || new Error('Could not read file identity registry'));
+            });
+
+            const register = async () => {
+                const db = await openFileHandleDb();
+                try {
+                    const entries = await getRegistry(db);
+                    for (const entry of entries) {
+                        if (!entry || !entry.id || !entry.handle) continue;
+                        try {
+                            if (await entry.handle.isSameEntry(handle)) return String(entry.id);
+                        } catch {
+                            // Never invent a second identity when an existing
+                            // file comparison is unavailable; that could allow
+                            // two tabs to edit the same file concurrently.
+                            return null;
+                        }
+                    }
+
+                    const id = window.crypto && typeof window.crypto.randomUUID === 'function'
+                        ? window.crypto.randomUUID()
+                        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                    entries.push({ id, handle });
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction(FILE_HANDLE_STORE_NAME, 'readwrite');
+                        tx.objectStore(FILE_HANDLE_STORE_NAME).put(entries, FILE_HANDLE_REGISTRY_KEY);
+                        tx.oncomplete = resolve;
+                        tx.onerror = () => reject(tx.error || new Error('Could not save file identity'));
+                    });
+                    return id;
+                } finally {
+                    db.close();
+                }
+            };
+
+            // Serialize registry updates so two tabs selecting the same file at
+            // the same time cannot create two identities for one file.
+            if (navigator.locks && typeof navigator.locks.request === 'function') {
+                try {
+                    return await navigator.locks.request('clippings-file-identity-registry', async () => register());
+                } catch {
+                    return null;
+                }
+            }
+            return null;
+        }
+
         async function ensureFileWritePermission(handle) {
             if (!handle || typeof handle.queryPermission !== 'function') return false;
             let permission = await handle.queryPermission({ mode: 'readwrite' });
@@ -520,14 +605,10 @@
             return docId;
         }
 
-        function computeEditLockKey(handle) {
-            if (window.location && window.location.protocol === 'file:') {
-                // For file://, the URL path is the most reliable identity across tabs.
-                return `file:${window.location.href}`;
-            }
-            const docId = ensureDocIdInDom();
-            const name = handle && handle.name ? handle.name : 'unknown';
-            return `doc:${name}:${docId}`;
+        async function computeEditLockKey(handle) {
+            const identity = await getFileHandleIdentity(handle);
+            if (!identity) return null;
+            return `file-handle:${identity}`;
         }
 
         function readEditLock(key) {
@@ -563,7 +644,7 @@
         }
 
 	        function hasEditLock() {
-	            if (state.editLockDisabled) return true;
+	            if (state.editLockDisabled || !state.editLockWebHeld) return false;
 	            if (!state.editLockKey) return false;
 	            const lock = readEditLock(state.editLockKey);
 	            return !!(lock && lock.owner === editSessionId && !isEditLockStale(lock));
@@ -605,6 +686,7 @@
             stopEditLockHeartbeat();
             // Do not clear the lock; we aren't the owner anymore.
             if (document.body.classList.contains('is-editing')) {
+                releaseEditLock();
                 setEditingMode(false);
             }
             const ownerTitle = lock && lock.title ? ` ("${lock.title}")` : '';
@@ -630,53 +712,100 @@
 	            }, EDIT_LOCK_HEARTBEAT_MS);
 	        }
 
-	        async function acquireEditLockForHandle(handle) {
-	            state.editLockDisabled = false;
-	            state.editLockKey = computeEditLockKey(handle);
-	            if (state.editLockDisabled) {
-	                state.editLockKey = null;
-	                return true;
-	            }
-	            const existing = readEditLock(state.editLockKey);
-	            if (existing && existing.owner && existing.owner !== editSessionId && !isEditLockStale(existing)) {
-                const ownerTitle = existing.title ? `\n\nOther tab title: ${existing.title}` : '';
-                const proceed = window.confirm(
-                    'This file looks like it is already in Editing mode in another tab.' +
-                    '\n\nContinuing can cause you to overwrite changes.' +
-                    ownerTitle +
-                    '\n\nPress Cancel to keep this tab read-only.'
-	                );
-	                if (!proceed) {
-	                    state.editLockKey = null;
-	                    return false;
-	                }
-	            }
+	        async function acquireWebEditLock(key) {
+            if (!navigator.locks || typeof navigator.locks.request !== 'function') return false;
 
+            const lockName = `clippings-edit:${key}`;
+            let resolveAcquired;
+            let rejectAcquired;
+            const acquired = new Promise((resolve, reject) => {
+                resolveAcquired = resolve;
+                rejectAcquired = reject;
+            });
+            let releaseLock;
+            const lockToken = {};
+            const held = new Promise((resolve) => {
+                releaseLock = resolve;
+            });
+
+            navigator.locks.request(lockName, { ifAvailable: true }, async (lock) => {
+                if (!lock) {
+                    resolveAcquired(false);
+                    return false;
+                }
+                state.editLockWebHeld = true;
+                state.editLockWebRelease = releaseLock;
+                state.editLockWebToken = lockToken;
+                resolveAcquired(true);
+                await held;
+                if (state.editLockWebToken === lockToken) {
+                    state.editLockWebHeld = false;
+                    state.editLockWebRelease = null;
+                    state.editLockWebToken = null;
+                }
+                return true;
+            }).catch((err) => {
+                if (state.editLockWebToken === lockToken) {
+                    state.editLockWebHeld = false;
+                    state.editLockWebRelease = null;
+                    state.editLockWebToken = null;
+                }
+                rejectAcquired(err);
+            });
+
+            try {
+                return await acquired;
+            } catch {
+                return false;
+            }
+        }
+
+        async function acquireEditLockForHandle(handle) {
+            state.editLockDisabled = false;
+            state.editLockKey = await computeEditLockKey(handle);
+            if (state.editLockDisabled || !navigator.locks || typeof navigator.locks.request !== 'function') {
+                state.editLockKey = null;
+                els.status.textContent = 'Editing unavailable: this browser cannot guarantee single-tab access';
+                return false;
+            }
+            if (!await acquireWebEditLock(state.editLockKey)) {
+                state.editLockKey = null;
+                els.status.textContent = 'Read-Only Mode: another tab is editing this file';
+                return false;
+            }
+	            // Web Locks is authoritative. A surviving localStorage record can
+	            // belong to a tab that has already closed, so it must not block a
+	            // newly acquired Web Lock; it is overwritten below.
 	            writeEditLock(state.editLockKey, {
 	                owner: editSessionId,
 	                ts: Date.now(),
 	                title: (document.title || '').slice(0, 120)
-	            });
-	            if (state.editLockDisabled) {
-	                state.editLockKey = null;
-	                stopEditLockHeartbeat();
-	                return true;
-	            }
+            });
+            if (state.editLockDisabled) {
+                releaseEditLock();
+                els.status.textContent = 'Editing unavailable: could not establish a persistent lock';
+                return false;
+            }
             startEditLockHeartbeat();
             announceEditLock('acquire');
             return true;
         }
 
 	        function releaseEditLock() {
-	            if (!state.editLockKey) return;
-	            const current = readEditLock(state.editLockKey);
-	            if (current && current.owner === editSessionId) {
-	                clearEditLock(state.editLockKey);
-	                announceEditLock('release');
+	            if (state.editLockKey) {
+	                const current = readEditLock(state.editLockKey);
+	                if (current && current.owner === editSessionId) {
+	                    clearEditLock(state.editLockKey);
+	                    announceEditLock('release');
+	                }
 	            }
 	            stopEditLockHeartbeat();
 	            state.editLockKey = null;
-	        }
+            if (state.editLockWebRelease) state.editLockWebRelease();
+            state.editLockWebRelease = null;
+            state.editLockWebHeld = false;
+            state.editLockWebToken = null;
+        }
 
 		        function setEditingMode(isEditing) {
 	            document.body.classList.toggle('is-editing', isEditing);
@@ -1466,6 +1595,11 @@
 	        }
 
 	        function resetDocumentNow() {
+	            if (state.editLockDisabled || !hasEditLock()) {
+                closeResetModal();
+                els.status.textContent = 'Reset blocked: this tab does not hold the file lock';
+                return;
+            }
 	            document.getElementById('main-title').textContent = 'Clippings Manager';
 	            document.title = 'Clippings Manager';
 	            document.getElementById('app-root').replaceChildren();
@@ -2554,7 +2688,7 @@
             // If this file is already being edited in another tab, surface an early warning in read-only mode.
             try {
                 if (window.location && window.location.protocol === 'file:') {
-                    const key = computeEditLockKey(null);
+                    const key = await computeEditLockKey(rememberedHandle);
 	                    const existing = readEditLock(key);
                     if (existing && existing.owner && existing.owner !== editSessionId && !isEditLockStale(existing)) {
                         const ownerTitle = existing.title ? ` ("${existing.title}")` : '';
@@ -2665,10 +2799,10 @@
 	            els.status.textContent = 'Editing Enabled - Auto-saving...';
 	        }
 
-	        async function saveToDisk() {
-	            if (!state.fileHandle) return;
-	            if (!document.body.classList.contains('is-editing')) return;
-	            if (!hasEditLock()) {
+        async function saveToDisk() {
+            if (!state.fileHandle) return;
+            if (!document.body.classList.contains('is-editing')) return;
+            if (!hasEditLock()) {
 	                els.status.textContent = 'Save blocked: another tab is editing this file';
 	                return;
 	            }
@@ -2677,18 +2811,40 @@
 	                return;
 	            }
 
-	            state.saveInProgress = true;
-	            try {
-	                const htmlContent = buildSavableHtml();
+            state.saveInProgress = true;
+            const saveHandle = state.fileHandle;
+            const saveLockKey = state.editLockKey;
+            const stillOwnsSaveLock = () => (
+                state.fileHandle === saveHandle &&
+                state.editLockKey === saveLockKey &&
+                document.body.classList.contains('is-editing') &&
+                hasEditLock()
+            );
+            let writable = null;
+            try {
+                const htmlContent = buildSavableHtml();
 
-	                const writable = await state.fileHandle.createWritable();
-	                await writable.write(htmlContent);
-	                await writable.close();
+                if (!stillOwnsSaveLock()) return;
+                writable = await saveHandle.createWritable();
+                if (!stillOwnsSaveLock()) {
+                    if (typeof writable.abort === 'function') await writable.abort();
+                    return;
+                }
+                await writable.write(htmlContent);
+                if (!stillOwnsSaveLock()) {
+                    if (typeof writable.abort === 'function') await writable.abort();
+                    return;
+                }
+                await writable.close();
+                writable = null;
                 
-	                showToast();
-	            } catch (err) {
-	                els.status.textContent = 'Error saving!';
-	                console.error("Save failed:", err);
+                showToast();
+            } catch (err) {
+                if (writable && typeof writable.abort === 'function') {
+                    try { await writable.abort(); } catch {}
+                }
+                els.status.textContent = 'Error saving!';
+                console.error("Save failed:", err);
 	            } finally {
 	                state.saveInProgress = false;
 	                if (state.pendingSave) {
