@@ -107,7 +107,6 @@
         const LAST_UPDATED_COMMIT_KEY = 'clippings-last-updated-commit';
         const FILE_HANDLE_DB_NAME = 'clippings-manager';
         const FILE_HANDLE_STORE_NAME = 'settings';
-        const FILE_HANDLE_KEY = 'last-file-handle';
         const FILE_HANDLE_REGISTRY_KEY = 'file-handle-registry';
         const editSessionId = (window.crypto && typeof window.crypto.randomUUID === 'function')
             ? window.crypto.randomUUID()
@@ -406,7 +405,6 @@
                         multiple: false
                     };
                     [state.fileHandle] = await window.showOpenFilePicker(pickerOptions);
-                    await rememberFileHandle(state.fileHandle);
                 }
 
                 if (!hasEditLock()) {
@@ -484,38 +482,6 @@
                 request.onsuccess = () => resolve(request.result);
                 request.onerror = () => reject(request.error || new Error('Could not open file handle storage'));
             });
-        }
-
-        async function rememberFileHandle(handle) {
-            if (!handle) return;
-            try {
-                const db = await openFileHandleDb();
-                await new Promise((resolve, reject) => {
-                    const tx = db.transaction(FILE_HANDLE_STORE_NAME, 'readwrite');
-                    tx.objectStore(FILE_HANDLE_STORE_NAME).put(handle, FILE_HANDLE_KEY);
-                    tx.oncomplete = resolve;
-                    tx.onerror = () => reject(tx.error || new Error('Could not save file handle'));
-                });
-                db.close();
-            } catch (err) {
-                console.warn('Could not remember the selected file:', err);
-            }
-        }
-
-        async function getRememberedFileHandle() {
-            try {
-                const db = await openFileHandleDb();
-                const handle = await new Promise((resolve, reject) => {
-                    const tx = db.transaction(FILE_HANDLE_STORE_NAME, 'readonly');
-                    const request = tx.objectStore(FILE_HANDLE_STORE_NAME).get(FILE_HANDLE_KEY);
-                    request.onsuccess = () => resolve(request.result || null);
-                    request.onerror = () => reject(request.error || new Error('Could not read remembered file'));
-                });
-                db.close();
-                return handle;
-            } catch {
-                return null;
-            }
         }
 
         async function getFileHandleIdentity(handle) {
@@ -840,41 +806,6 @@
 	            els.highlightPanel.hidden = !isOpen;
 	            els.highlightToggleBtn.textContent = isOpen ? 'Hide Highlights' : 'Highlight Colors';
 	        }
-
-        async function hydrateFromHandle(handle) {
-            if (!handle) return false;
-            try {
-                const perm = await handle.queryPermission({ mode: 'read' });
-                if (perm !== 'granted') return false;
-
-                const file = await handle.getFile();
-                const text = await file.text();
-                if (!text) return false;
-
-                const parser = new DOMParser();
-                const parsed = parser.parseFromString(text, 'text/html');
-                const parsedTitle = parsed.getElementById('main-title');
-                const parsedRoot = parsed.getElementById('app-root');
-
-                if (!parsedTitle || !parsedRoot) return false;
-
-                document.getElementById('main-title').innerHTML = parsedTitle.innerHTML;
-                document.getElementById('app-root').innerHTML = parsedRoot.innerHTML;
-                removeLegacyContentDragHandles(document.getElementById('app-root'));
-                ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
-                ensureContainerCollapseControls(document.getElementById('app-root'));
-                ensureSectionMenus(document.getElementById('app-root'));
-                enhanceEntries(document.getElementById('app-root'));
-                syncContainerDepths();
-	                document.title = (parsedTitle.textContent || '').trim() || 'Untitled Document';
-	                state.fileHandle = handle;
-	                generateTOC();
-	                return true;
-            } catch (err) {
-                console.error('Could not hydrate from saved file handle:', err);
-                return false;
-            }
-        }
 
         function updateTocToggleLabel() {
 	            const btn = document.getElementById('toc-level-btn');
@@ -2660,19 +2591,6 @@
 	            const btn = document.getElementById('enable-edit-btn');
 	            if (btn && !state.isUnsupportedBrowser) btn.removeAttribute('style');
 
-            if (!state.isUnsupportedBrowser) {
-                const rememberedHandle = await getRememberedFileHandle();
-                if (rememberedHandle && typeof rememberedHandle.queryPermission === 'function') {
-                    try {
-                        if (await rememberedHandle.queryPermission({ mode: 'read' }) === 'granted') {
-                            await hydrateFromHandle(rememberedHandle);
-                        }
-                    } catch (err) {
-                        console.warn('Could not restore the previously selected file:', err);
-                    }
-                }
-            }
-
             removeLegacyContentDragHandles(document.getElementById('app-root'));
                 ensureSectionAddEntryTopButtons(document.getElementById('app-root'));
                 ensureContainerCollapseControls(document.getElementById('app-root'));
@@ -2685,17 +2603,6 @@
 	            generateTOC();
 	            applyEntrySearch();
 
-            // If this file is already being edited in another tab, surface an early warning in read-only mode.
-            try {
-                if (window.location && window.location.protocol === 'file:') {
-                    const key = await computeEditLockKey(rememberedHandle);
-	                    const existing = readEditLock(key);
-                    if (existing && existing.owner && existing.owner !== editSessionId && !isEditLockStale(existing)) {
-                        const ownerTitle = existing.title ? ` ("${existing.title}")` : '';
-                        els.status.textContent = `Read-Only Mode (another tab is editing this file${ownerTitle})`;
-                    }
-	                }
-	            } catch {}
 	        });
 
 	        window.addEventListener('storage', (e) => {
@@ -2727,7 +2634,6 @@
 	                        multiple: false
 	                    };
                     [state.fileHandle] = await window.showOpenFilePicker(pickerOptions);
-                    await rememberFileHandle(state.fileHandle);
                 }
 
                 if (!await ensureFileWritePermission(state.fileHandle)) {
