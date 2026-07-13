@@ -553,24 +553,6 @@
             return permission === 'granted';
         }
 
-        function getDocIdFromDom() {
-            const meta = document.querySelector('meta[name="clippings-doc-id"]');
-            return meta && meta.content ? meta.content.trim() : '';
-        }
-
-        function ensureDocIdInDom() {
-            let docId = getDocIdFromDom();
-            if (docId) return docId;
-            docId = (window.crypto && typeof window.crypto.randomUUID === 'function')
-                ? window.crypto.randomUUID()
-                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-            const meta = document.createElement('meta');
-            meta.setAttribute('name', 'clippings-doc-id');
-            meta.setAttribute('content', docId);
-            (document.head || document.documentElement).appendChild(meta);
-            return docId;
-        }
-
         async function computeEditLockKey(handle) {
             const identity = await getFileHandleIdentity(handle);
             if (!identity) return null;
@@ -930,12 +912,6 @@
             }
 
             return { plainTerms, tagTerms, highlightTerms };
-        }
-
-        function buildTagSearchToken(tag) {
-            const normalized = normalizeTag(tag);
-            if (!normalized) return '';
-            return /\s/.test(normalized) ? `tag:"${normalized}"` : `tag:${normalized}`;
         }
 
         function clearSelectedSearchTags() {
