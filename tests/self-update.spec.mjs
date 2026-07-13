@@ -12,7 +12,7 @@ function makeUpstreamHtml({ localHtml, remoteSha }) {
   if (!localSha) throw new Error('Missing clippings-build-sha in local HTML');
   return String(localHtml)
     .replace(`name="clippings-build-sha" content="${localSha}"`, `name="clippings-build-sha" content="${remoteSha}"`)
-    .replace('v0.1.0', 'v9.9.9');
+    .replace('v0.5.0', 'v9.9.9');
 }
 
 test('self-update: "Not now" ignores that upstream commit globally', async ({ page }, testInfo) => {

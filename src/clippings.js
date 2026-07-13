@@ -21,8 +21,14 @@
 	            highlightToggleBtn: document.getElementById('highlight-toggle-btn'),
 	            entrySearch: document.getElementById('entry-search'),
                 knownTagOptions: document.getElementById('known-tag-options'),
-                searchTagFilters: document.getElementById('search-tag-filters'),
-                searchTagFiltersHelp: document.getElementById('search-tag-filters-help'),
+                    searchTagFilters: document.getElementById('search-tag-filters'),
+                    searchTagFiltersHelp: document.getElementById('search-tag-filters-help'),
+                    tocFab: document.getElementById('toc-fab'),
+                    tocDrawer: document.getElementById('toc-drawer'),
+                    tocDrawerClose: document.getElementById('toc-drawer-close'),
+                    tocDrawerBackdrop: document.querySelector('.toc-drawer-backdrop'),
+                    tocDrawerList: document.getElementById('toc-drawer-list'),
+                    tocContainer: document.getElementById('toc-container'),
 	        };
 
 		        const state = {
@@ -741,11 +747,53 @@
             }
         }
 
-	        function updateTocToggleLabel() {
+        function updateTocToggleLabel() {
 	            const btn = document.getElementById('toc-level-btn');
 	            if (!btn) return;
 	            btn.textContent = state.tocIncludeEntries ? 'Hide Entries' : 'Show Entries';
 	        }
+
+        function setTocDrawerOpen(isOpen) {
+            if (!els.tocDrawer || !els.tocFab) return;
+            els.tocDrawer.hidden = !isOpen;
+            els.tocFab.setAttribute('aria-expanded', String(isOpen));
+            document.body.classList.toggle('toc-drawer-open', isOpen);
+            if (isOpen && els.tocDrawerClose) els.tocDrawerClose.focus();
+            if (!isOpen) els.tocFab.focus();
+        }
+
+        function closeTocDrawer() {
+            if (els.tocDrawer && !els.tocDrawer.hidden) setTocDrawerOpen(false);
+        }
+
+        function observeInlineToc() {
+            if (!els.tocContainer || typeof IntersectionObserver !== 'function') {
+                document.body.classList.add('toc-past-inline');
+                return;
+            }
+            const observer = new IntersectionObserver(([entry]) => {
+                document.body.classList.toggle('toc-past-inline', !entry.isIntersecting);
+            }, { threshold: 0 });
+            observer.observe(els.tocContainer);
+        }
+
+        function expandTocTarget(target) {
+            if (!target) return false;
+            let changed = false;
+            let container = target.closest(containerSelector);
+            while (container) {
+                if (container.dataset.collapsed === 'true') {
+                    container.dataset.collapsed = 'false';
+                    syncContainerCollapseState(container);
+                    changed = true;
+                }
+                container = container.parentElement?.closest(containerSelector) || null;
+            }
+            if (changed && document.body.classList.contains('is-editing')) {
+                triggerStructureUpdate();
+            }
+            return changed;
+        }
 
         function removeLegacyContentDragHandles(root = document) {
             if (!root) return;
@@ -2098,7 +2146,16 @@
 		                document.title = (e.target.textContent || '') || 'Untitled Document';
 		                triggerContentUpdate(e);
 		            });
-		            document.getElementById('help-btn').addEventListener('click', openHelp);
+	            document.getElementById('help-btn').addEventListener('click', openHelp);
+	            if (els.tocFab) els.tocFab.addEventListener('click', () => setTocDrawerOpen(true));
+	            if (els.tocDrawerClose) els.tocDrawerClose.addEventListener('click', closeTocDrawer);
+	            if (els.tocDrawerBackdrop) els.tocDrawerBackdrop.addEventListener('click', closeTocDrawer);
+	            if (els.tocDrawerList) {
+	                els.tocDrawerList.addEventListener('click', (e) => {
+	                    if (e.target.closest('a')) closeTocDrawer();
+
+                });
+	            }
 		            if (els.highlightToggleBtn) {
 		                els.highlightToggleBtn.addEventListener('click', () => {
 		                    setHighlightPanelOpen(els.highlightPanel.hidden);
@@ -2204,8 +2261,13 @@
 		            }
 		        }
 
-		        function onGlobalKeydown(e) {
-		            if (els.updateModal && !els.updateModal.hidden && e.key === 'Escape') {
+	        function onGlobalKeydown(e) {
+	            if (els.tocDrawer && !els.tocDrawer.hidden && e.key === 'Escape') {
+	                e.preventDefault();
+	                closeTocDrawer();
+	                return;
+	            }
+	            if (els.updateModal && !els.updateModal.hidden && e.key === 'Escape') {
 		                e.preventDefault();
 		                ignoreUpdateSha(state.updateCandidateIgnoreToken || state.updateCandidateSha);
 		                closeUpdateModal();
@@ -2485,6 +2547,7 @@
                 syncContainerDepths();
             
 	            bindBaseListeners();
+	            observeInlineToc();
 	            generateTOC();
 	            applyEntrySearch();
 
@@ -2989,6 +3052,9 @@
             });
 
             toc.replaceChildren(topList);
+            if (els.tocDrawerList) {
+                els.tocDrawerList.replaceChildren(topList.cloneNode(true));
+            }
         }
 
 	        function createDeleteButton(deleteType, text, testId) {
@@ -3220,7 +3286,25 @@
 	        }
 
 	        document.body.addEventListener('click', (e) => {
-            const sectionMenuAction = e.target.closest('.section-menu-item[data-section-action]');
+	            const collapseTitle = e.target.closest('.section-title, .subsection-title');
+	            if (collapseTitle && !document.body.classList.contains('is-editing')) {
+	                const container = collapseTitle.closest(containerSelector);
+                if (container) {
+                    container.dataset.collapsed = container.dataset.collapsed === 'true' ? 'false' : 'true';
+                    syncContainerCollapseState(container);
+                }
+                return;
+            }
+
+	            const tocLink = e.target.closest('#toc a, #toc-drawer-list a');
+	            if (tocLink) {
+	                const targetId = tocLink.getAttribute('href')?.slice(1);
+                if (targetId) expandTocTarget(document.getElementById(targetId));
+                if (tocLink.closest('#toc-drawer-list')) closeTocDrawer();
+                return;
+	            }
+
+	            const sectionMenuAction = e.target.closest('.section-menu-item[data-section-action]');
 	            if (sectionMenuAction) {
 	                const section = sectionMenuAction.closest('.section');
 	                if (document.body.classList.contains('is-editing') && section) {

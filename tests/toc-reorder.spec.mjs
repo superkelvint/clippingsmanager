@@ -116,3 +116,29 @@ test('section menu inserts sections above and below', async ({ page }, testInfo)
     temp.cleanup();
   }
 });
+
+test('floating TOC drawer opens and closes on navigation', async ({ page }, testInfo) => {
+  const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
+  const temp = makeTempClippingsCopy(sourceHtmlPath);
+  try {
+    await addInitShims(page);
+    await page.goto(fileUrl(temp.path));
+    await enableEditing(page);
+
+    await page.getByTestId('add-section').click();
+    const section = page.locator('[data-testid="app-root"] .section').first();
+    await setContentEditableText(section.getByTestId('section-title'), 'Drawer Target');
+    await section.getByTestId('collapse-section').click();
+    await expect(section).toHaveClass(/is-collapsed/);
+
+    await page.getByTestId('toc-fab').click();
+    await expect(page.getByTestId('toc-drawer')).toBeVisible();
+    await expect(page.getByTestId('toc-drawer-list')).toContainText('Drawer Target');
+
+    await page.getByTestId('toc-drawer-list').getByRole('link', { name: 'Drawer Target' }).click();
+    await expect(page.getByTestId('toc-drawer')).toBeHidden();
+    await expect(section).not.toHaveClass(/is-collapsed/);
+  } finally {
+    temp.cleanup();
+  }
+});
