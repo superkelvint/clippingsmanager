@@ -1,5 +1,7 @@
 
 import { createFileSession } from './file-session.js';
+import { createDocumentDom } from './document-dom.js';
+import { createToc } from './toc.js';
 
 	        const els = {
 	            status: document.getElementById('save-status'),
@@ -71,6 +73,32 @@ import { createFileSession } from './file-session.js';
 
         const editableSelector = '[contenteditable]';
         const containerSelector = '.section, .subsection-group';
+        const documentDom = createDocumentDom({
+            containerSelector,
+            createAddButton: (...args) => createAddButton(...args),
+            createDeleteButton: (...args) => createDeleteButton(...args),
+            enhanceEntries: (...args) => enhanceEntries(...args),
+        });
+        const {
+            isContainerNode,
+            getDirectChildEntries,
+            getDirectChildContainers,
+            getContainerTitleText,
+            ensureContainerDomId,
+            ensureDomId,
+            removeLegacyContentDragHandles,
+            syncContainerCollapseState,
+            normalizeDocument,
+        } = documentDom;
+        const { generateTOC } = createToc({
+            state,
+            els,
+            isContainerNode,
+            getDirectChildContainers,
+            getContainerTitleText,
+            ensureContainerDomId,
+            ensureDomId,
+        });
         const defaultHighlightPalette = ['#facc15', '#86efac', '#93c5fd'];
         const defaultTagPalette = [
             { bg: '#fef3c7', border: '#f59e0b', text: '#92400e', removeBg: '#fde68a', removeText: '#78350f' },
@@ -541,11 +569,6 @@ import { createFileSession } from './file-session.js';
                 triggerStructureUpdate();
             }
             return changed;
-        }
-
-        function removeLegacyContentDragHandles(root = document) {
-            if (!root) return;
-            root.querySelectorAll('.drag-handle:not(.toc-drag-handle)').forEach((el) => el.remove());
         }
 
 	        function openHelp() {
@@ -2476,186 +2499,6 @@ import { createFileSession } from './file-session.js';
 	            return changed;
 	        }
 
-        function isContainerNode(node) {
-            return !!(node && node.matches && node.matches(containerSelector));
-        }
-
-        function getDirectChildItems(parent, selector) {
-            return Array.from(parent.children).filter((child) => child.matches(selector));
-        }
-
-        function getDirectChildEntries(parent) {
-            return getDirectChildItems(parent, '.entry');
-        }
-
-        function getDirectChildContainers(parent) {
-            return getDirectChildItems(parent, containerSelector);
-        }
-
-        function getContainerTitleNode(container) {
-            if (!isContainerNode(container)) return null;
-            if (container.classList.contains('section')) {
-                return container.querySelector(':scope > h2 .section-title');
-            }
-            return container.querySelector(':scope > h3 .subsection-title');
-        }
-
-        function getContainerTitleText(container) {
-            const titleNode = getContainerTitleNode(container);
-            const title = (titleNode ? titleNode.textContent : '').trim();
-            if (title) return title;
-            return container.classList.contains('section') ? 'Untitled Section' : 'Untitled Subsection';
-        }
-
-        function ensureContainerDomId(container) {
-            if (!isContainerNode(container)) return '';
-            return ensureDomId(container, container.classList.contains('section') ? 'sec' : 'subsec');
-        }
-
-        function buildContainerDepthMap(parent, depth) {
-            getDirectChildContainers(parent).forEach((container) => {
-                container.dataset.depth = String(depth);
-                buildContainerDepthMap(container, depth + 1);
-            });
-        }
-
-        function syncContainerDepths() {
-            const appRoot = document.getElementById('app-root');
-            if (!appRoot) return;
-            buildContainerDepthMap(appRoot, 0);
-        }
-
-        function ensureSectionAddEntryTopButtons(root = document) {
-            if (!root) return;
-            root.querySelectorAll(containerSelector).forEach((container) => {
-                const addSubsection = container.querySelector(':scope > .add-subsection');
-                let addEntryTop = container.querySelector(':scope > .add-entry-top');
-                if (!addEntryTop) {
-                    const heading = container.querySelector(container.classList.contains('section') ? ':scope > h2' : ':scope > h3');
-                    if (heading) {
-                        addEntryTop = createAddButton('add-btn add-entry-top', 'add-entry-top', '+ Add Entry');
-                        if (addSubsection) {
-                            addSubsection.insertAdjacentElement('afterend', addEntryTop);
-                        } else {
-                            heading.insertAdjacentElement('afterend', addEntryTop);
-                        }
-                    }
-                } else if (addSubsection && addEntryTop.previousElementSibling !== addSubsection) {
-                    addSubsection.insertAdjacentElement('afterend', addEntryTop);
-                }
-                if (!container.querySelector(':scope > .add-entry:not(.add-entry-top)')) {
-                    container.appendChild(createAddButton('add-btn add-entry', 'add-entry', '+ Add Entry'));
-                }
-                if (addEntryTop) {
-                    const entryCount = container.querySelectorAll(':scope > .entry').length;
-                    addEntryTop.hidden = entryCount === 1;
-                    const addEntryBottom = container.querySelector(':scope > .add-entry:not(.add-entry-top)');
-                    if (addEntryBottom) addEntryBottom.hidden = entryCount === 0;
-                }
-            });
-        }
-
-        function syncContainerCollapseState(container) {
-            if (!isContainerNode(container)) return;
-            const collapsed = container.dataset.collapsed === 'true';
-            container.classList.toggle('is-collapsed', collapsed);
-            const toggle = container.querySelector(':scope > h2 .collapse-toggle, :scope > h3 .collapse-toggle');
-            if (!toggle) return;
-            toggle.setAttribute('aria-expanded', String(!collapsed));
-            toggle.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${container.classList.contains('section') ? 'section' : 'subsection'}`);
-            toggle.title = collapsed ? 'Expand' : 'Collapse';
-            toggle.textContent = collapsed ? '+' : '−';
-        }
-
-        function ensureContainerCollapseControls(root = document) {
-            if (!root) return;
-            root.querySelectorAll(containerSelector).forEach((container) => {
-                const heading = container.querySelector(':scope > h2, :scope > h3');
-                const toolbar = heading && heading.querySelector(':scope > .item-toolbar');
-                if (toolbar) {
-                    const title = toolbar.querySelector(':scope > .section-title, :scope > .subsection-title');
-                    let toggle = toolbar.querySelector(':scope > .collapse-toggle');
-                    if (!toggle) {
-                        toggle = document.createElement('button');
-                        toggle.type = 'button';
-                        toggle.className = 'collapse-toggle';
-                        toggle.setAttribute('data-testid', container.classList.contains('section') ? 'collapse-section' : 'collapse-subsection');
-                    }
-                    if (title) toolbar.insertBefore(toggle, title);
-                }
-                syncContainerCollapseState(container);
-            });
-        }
-
-        function normalizeDocument(root = document.getElementById('app-root')) {
-            if (!root) return;
-            removeLegacyContentDragHandles(root);
-            ensureSectionAddEntryTopButtons(root);
-            ensureContainerCollapseControls(root);
-            ensureSectionMenus(root);
-            enhanceEntries(root);
-            syncContainerDepths();
-        }
-
-        function createSectionMenu() {
-            const menu = document.createElement('div');
-            menu.className = 'section-menu';
-            menu.hidden = true;
-
-            for (const [position, label] of [['above', 'Add Section Above'], ['below', 'Add Section Below']]) {
-                const item = document.createElement('button');
-                item.type = 'button';
-                item.className = 'section-menu-item';
-                item.setAttribute('data-testid', 'section-menu-item');
-                item.dataset.sectionPosition = position;
-                item.dataset.sectionAction = `add-${position}`;
-                item.setAttribute('role', 'menuitem');
-                item.textContent = label;
-                menu.appendChild(item);
-            }
-            const deleteItem = createDeleteButton('section', 'Delete Section', 'delete-section');
-            deleteItem.classList.add('section-menu-item', 'section-menu-delete');
-            menu.appendChild(deleteItem);
-            return menu;
-        }
-
-        function ensureSectionMenus(root = document) {
-            if (!root) return;
-            root.querySelectorAll(':scope .section').forEach((section) => {
-                const heading = section.querySelector(':scope > h2');
-                const toolbar = heading && heading.querySelector(':scope > .item-toolbar');
-                if (!heading || !toolbar) return;
-
-                let toggle = toolbar.querySelector(':scope > .section-menu-toggle');
-                if (!toggle) {
-                    toggle = document.createElement('button');
-                    toggle.type = 'button';
-                    toggle.className = 'section-menu-toggle';
-                    toggle.setAttribute('data-testid', 'section-menu-toggle');
-                    toggle.setAttribute('aria-haspopup', 'menu');
-                    toggle.setAttribute('aria-expanded', 'false');
-                    toggle.setAttribute('aria-label', 'Section actions');
-                    toggle.title = 'Section actions';
-                    toggle.textContent = '⋮';
-                    toolbar.appendChild(toggle);
-                }
-
-                let menu = heading.querySelector(':scope > .section-menu');
-                if (!menu) {
-                    menu = createSectionMenu();
-                    menu.setAttribute('role', 'menu');
-                    heading.appendChild(menu);
-                }
-
-                const toolbarDelete = toolbar.querySelector(':scope > .delete-btn[data-delete-type="section"]');
-                if (toolbarDelete) toolbarDelete.remove();
-                if (!menu.querySelector(':scope > .delete-btn[data-delete-type="section"]')) {
-                    const deleteItem = createDeleteButton('section', 'Delete Section', 'delete-section');
-                    deleteItem.classList.add('section-menu-item', 'section-menu-delete');
-                    menu.appendChild(deleteItem);
-                }
-            });
-        }
 
         function closeSectionMenus() {
             document.querySelectorAll('.section-menu:not([hidden])').forEach((menu) => {
@@ -2693,118 +2536,6 @@ import { createFileSession } from './file-session.js';
             triggerStructureUpdate();
         }
 
-	        function createTocDragHandle() {
-	            const handle = document.createElement('span');
-	            handle.className = 'drag-handle toc-drag-handle';
-	            handle.setAttribute('data-testid', 'toc-drag-handle');
-	            handle.draggable = true;
-	            handle.textContent = '⋮⋮';
-	            handle.title = 'Drag to reorder';
-	            handle.setAttribute('aria-label', 'Drag to reorder');
-	            return handle;
-	        }
-
-	        function createStableDomId(prefix) {
-	            const base = (window.crypto && typeof window.crypto.randomUUID === 'function')
-	                ? window.crypto.randomUUID()
-	                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-	            return `${prefix}-${base}`;
-	        }
-
-	        function ensureDomId(el, prefix) {
-	            if (!el) return '';
-	            if (el.id && el.id.trim()) return el.id;
-	            el.id = createStableDomId(prefix);
-	            return el.id;
-	        }
-
-        function createTocEntryItem(entry, parentTargetId) {
-            ensureDomId(entry, 'entry');
-            const rawTitle = entry.querySelector('.entry-title') ? entry.querySelector('.entry-title').textContent : '';
-            const entryTitle = rawTitle.trim() || 'Untitled Entry';
-
-            const entryItem = document.createElement('li');
-            entryItem.classList.add('draggable');
-            entryItem.setAttribute('data-testid', 'toc-item');
-            entryItem.dataset.tocType = 'entry';
-            entryItem.dataset.targetId = entry.id;
-            entryItem.dataset.parentId = parentTargetId || '';
-
-            const entryRow = document.createElement('span');
-            entryRow.className = 'toc-row';
-            entryRow.appendChild(createTocDragHandle());
-            const entryLink = document.createElement('a');
-            entryLink.href = `#${entry.id}`;
-            entryLink.textContent = entryTitle;
-            entryRow.appendChild(entryLink);
-            entryItem.appendChild(entryRow);
-            return entryItem;
-        }
-
-        function createTocContainerItem(container, parentTargetId) {
-            const containerId = ensureContainerDomId(container);
-            const item = document.createElement('li');
-            item.classList.add('draggable');
-            item.setAttribute('data-testid', 'toc-item');
-            item.dataset.tocType = container.classList.contains('section') ? 'section' : 'subsection';
-            item.dataset.targetId = containerId;
-            item.dataset.parentId = parentTargetId || '';
-
-            const row = document.createElement('span');
-            row.className = 'toc-row';
-            row.appendChild(createTocDragHandle());
-            const link = document.createElement('a');
-            link.href = `#${containerId}`;
-            link.textContent = getContainerTitleText(container);
-            if (container.classList.contains('section')) {
-                const strong = document.createElement('strong');
-                strong.appendChild(link);
-                row.appendChild(strong);
-            } else {
-                row.appendChild(link);
-            }
-            item.appendChild(row);
-            return item;
-        }
-
-        function appendContainerChildrenToToc(container, containerItem) {
-            const childrenList = document.createElement('ul');
-            const parentTargetId = ensureContainerDomId(container);
-
-            Array.from(container.children).forEach((child) => {
-                if (isContainerNode(child)) {
-                    const childItem = createTocContainerItem(child, parentTargetId);
-                    appendContainerChildrenToToc(child, childItem);
-                    childrenList.appendChild(childItem);
-                    return;
-                }
-
-                if (child.matches('.entry') && state.tocIncludeEntries) {
-                    childrenList.appendChild(createTocEntryItem(child, parentTargetId));
-                }
-            });
-
-            if (childrenList.children.length > 0) {
-                containerItem.appendChild(childrenList);
-            }
-        }
-
-        function generateTOC() {
-            const toc = document.getElementById('toc');
-            const topList = document.createElement('ul');
-            const appRoot = document.getElementById('app-root');
-
-            getDirectChildContainers(appRoot).forEach((container) => {
-                const containerItem = createTocContainerItem(container, 'app-root');
-                appendContainerChildrenToToc(container, containerItem);
-                topList.appendChild(containerItem);
-            });
-
-            toc.replaceChildren(topList);
-            if (els.tocDrawerList) {
-                els.tocDrawerList.replaceChildren(topList.cloneNode(true));
-            }
-        }
 
 	        function createDeleteButton(deleteType, text, testId) {
 	            const button = document.createElement('button');
