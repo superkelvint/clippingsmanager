@@ -48,7 +48,8 @@ function sanitizeHtmlForBuildId(html) {
 }
 
 function computeBuildId({ html, js }) {
-  // Build id should reflect template source (HTML skeleton + src JS), not the git commit SHA.
+  // Hash the generated bundle so changes in any imported source module trigger updates.
+  // Do not include the git commit SHA: content-identical templates should share a build id.
   // This stays stable across commits/builds unless the actual template/JS changes.
   const safeHtml = sanitizeHtmlForBuildId(html);
   const beginIdx = safeHtml.indexOf(beginMarker);
@@ -222,7 +223,6 @@ async function main() {
   const htmlRaw = fs.readFileSync(htmlPath, 'utf8');
   const jsRaw = fs.readFileSync(jsPath, 'utf8');
 
-  const buildSha = computeBuildId({ html: htmlRaw, js: jsRaw });
   const templateCommit = getGitHeadCommitSha();
   let js = normalizeNewlines(jsRaw);
   {
@@ -242,6 +242,7 @@ async function main() {
     js = result.outputFiles[0].text;
   }
   js = escapeScriptClose(js);
+  const buildSha = computeBuildId({ html: htmlRaw, js });
 
   const mainBuild = buildHtmlWithInlineJs({
     htmlRaw,
