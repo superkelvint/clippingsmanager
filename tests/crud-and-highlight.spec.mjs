@@ -110,6 +110,43 @@ test('top section add-entry control inserts entries at the start', async ({ page
   }
 });
 
+test('pasting rich HTML keeps formatting and removes background colors', async ({ page }, testInfo) => {
+  const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
+  const temp = makeTempClippingsCopy(sourceHtmlPath);
+  try {
+    await addInitShims(page);
+    await page.goto(fileUrl(temp.path));
+    await enableEditing(page);
+
+    await page.getByTestId('add-section').click();
+    const section = page.locator('[data-testid="app-root"] .section').first();
+    await section.getByTestId('add-entry').click();
+    const text = section.locator('.entry .text').first();
+    await text.evaluate((el) => {
+      el.focus();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      const data = new DataTransfer();
+      data.setData('text/html', '<p><strong>Bold</strong> and <span style="color: rgb(255, 0, 0); background-color: rgb(255, 255, 0); text-decoration: underline">colored</span></p>');
+      data.setData('text/plain', 'Bold and colored');
+      el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+    });
+
+    await expect(text.locator('strong')).toHaveText('Bold');
+    const colored = text.locator('span').filter({ hasText: 'colored' });
+    await expect(colored).toHaveCSS('color', 'rgb(255, 0, 0)');
+    await expect(colored).toHaveCSS('text-decoration-line', 'underline');
+    await expect(colored).not.toHaveCSS('background-color', 'rgb(255, 255, 0)');
+  } finally {
+    temp.cleanup();
+  }
+});
+
 test('dragging TOC subsection reorders subsections within a section', async ({ page }, testInfo) => {
   const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
   const temp = makeTempClippingsCopy(sourceHtmlPath);

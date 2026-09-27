@@ -19,7 +19,7 @@ export function createEditingController({
 		            state.editingListenersController = ac;
 		            const signal = ac.signal;
 
-	            // Force rich paste/drop content into plain text to prevent structural HTML injection.
+	            // Sanitize rich paste/drop content before inserting it into editable notes.
 	            document.addEventListener('paste', onEditingPaste, { signal });
 	            document.addEventListener('drop', onEditingDrop, { signal });
 	            document.addEventListener('keydown', onEditingKeydown, { signal });

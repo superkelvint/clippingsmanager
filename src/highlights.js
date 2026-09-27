@@ -364,12 +364,38 @@ export function createHighlights({
             }
         }
 
-        function sanitizeHtmlToFragment(html) {
+        function sanitizeHtmlToFragment(html, { preserveHighlights = false } = {}) {
             const template = document.createElement('template');
             template.innerHTML = html || '';
 
             const out = document.createDocumentFragment();
-            const blockTags = new Set(['P', 'DIV', 'LI', 'UL', 'OL', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE']);
+            const allowedTags = new Set([
+                'A', 'B', 'BLOCKQUOTE', 'BR', 'CAPTION', 'CODE', 'DD', 'DEL', 'DIV', 'DL', 'DT',
+                'EM', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HR', 'I', 'INS', 'KBD', 'LI', 'OL',
+                'P', 'PRE', 'S', 'SAMP', 'SMALL', 'SPAN', 'STRIKE', 'STRONG', 'SUB', 'SUP', 'TABLE',
+                'TBODY', 'TD', 'TFOOT', 'TH', 'THEAD', 'TR', 'U', 'UL', 'VAR'
+            ]);
+            const blockedTags = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH', 'TEMPLATE']);
+            const allowedStyleProperties = [
+                'color', 'font-family', 'font-size', 'font-style', 'font-weight', 'letter-spacing',
+                'line-height', 'text-align', 'text-decoration', 'text-indent', 'text-transform',
+                'vertical-align', 'white-space', 'word-spacing'
+            ];
+
+            function copySafeStyle(source, target) {
+                for (const property of allowedStyleProperties) {
+                    const value = source.style.getPropertyValue(property).trim();
+                    if (!value || /url\s*\(|expression\s*\(|javascript\s*:/i.test(value)) continue;
+                    target.style.setProperty(property, value);
+                }
+            }
+
+            function safeLink(value) {
+                const href = (value || '').trim();
+                if (!href || /^(?:javascript|data|vbscript):/i.test(href)) return '';
+                if (/^(?:https?:|mailto:|tel:|#|\/|\.\/|\.\.\/)/i.test(href)) return href;
+                return '';
+            }
 
             function walk(node, parent) {
                 if (node.nodeType === Node.TEXT_NODE) {
@@ -379,48 +405,49 @@ export function createHighlights({
 
                 if (node.nodeType !== Node.ELEMENT_NODE) return;
                 const tag = node.tagName.toUpperCase();
-
-                if (tag === 'BR') {
-                    parent.appendChild(document.createElement('br'));
+                if (blockedTags.has(tag)) return;
+                if (tag === 'SPAN' && node.classList.contains('search-hit')) {
+                    node.childNodes.forEach((child) => walk(child, parent));
                     return;
                 }
 
-                if (tag === 'B' || tag === 'STRONG') {
-                    const strong = document.createElement('strong');
-                    node.childNodes.forEach((child) => walk(child, strong));
-                    if (strong.childNodes.length > 0) parent.appendChild(strong);
+                const highlightColor = normalizeColorValue(node.style?.backgroundColor);
+                if (preserveHighlights && tag === 'SPAN' && (node.dataset.highlight === 'true' || node.classList.contains('highlight-mark') || highlightColor)) {
+                    const mark = document.createElement('span');
+                    mark.className = 'highlight-mark';
+                    mark.setAttribute('data-testid', 'highlight-mark');
+                    mark.dataset.highlight = 'true';
+                    mark.style.backgroundColor = highlightColor || normalizeColorValue(node.getAttribute('data-highlight-color')) || defaultHighlightPalette[0];
+                    node.childNodes.forEach((child) => walk(child, mark));
+                    if (mark.childNodes.length > 0) parent.appendChild(mark);
                     return;
                 }
 
-                if (tag === 'I' || tag === 'EM') {
-                    const em = document.createElement('em');
-                    node.childNodes.forEach((child) => walk(child, em));
-                    if (em.childNodes.length > 0) parent.appendChild(em);
+                if (!allowedTags.has(tag)) {
+                    node.childNodes.forEach((child) => walk(child, parent));
                     return;
                 }
 
-                if (tag === 'SPAN') {
-                    if (node.classList.contains('search-hit')) {
-                        node.childNodes.forEach((child) => walk(child, parent));
-                        return;
+                const clean = document.createElement(tag.toLowerCase());
+                copySafeStyle(node, clean);
+                if (tag === 'A') {
+                    const href = safeLink(node.getAttribute('href'));
+                    if (href) {
+                        clean.setAttribute('href', href);
+                        clean.setAttribute('rel', 'noopener noreferrer');
                     }
-                    const highlightColor = normalizeColorValue(node.style.backgroundColor);
-                    if (node.dataset.highlight === 'true' || highlightColor) {
-                        const span = document.createElement('span');
-                        span.className = 'highlight-mark';
-                        span.setAttribute('data-testid', 'highlight-mark');
-                        span.dataset.highlight = 'true';
-                        span.style.backgroundColor = highlightColor || normalizeColorValue(node.getAttribute('data-highlight-color')) || defaultHighlightPalette[0];
-                        node.childNodes.forEach((child) => walk(child, span));
-                        if (span.childNodes.length > 0) parent.appendChild(span);
-                        return;
+                    const title = node.getAttribute('title');
+                    if (title) clean.setAttribute('title', title);
+                }
+                if (tag === 'TD' || tag === 'TH') {
+                    for (const attr of ['colspan', 'rowspan']) {
+                        const value = node.getAttribute(attr);
+                        if (/^\d{1,2}$/.test(value || '')) clean.setAttribute(attr, value);
                     }
                 }
 
-                node.childNodes.forEach((child) => walk(child, parent));
-                if (blockTags.has(tag)) {
-                    parent.appendChild(document.createElement('br'));
-                }
+                node.childNodes.forEach((child) => walk(child, clean));
+                parent.appendChild(clean);
             }
 
             template.content.childNodes.forEach((child) => walk(child, out));
@@ -442,7 +469,7 @@ export function createHighlights({
 
         function sanitizeTextFormattingInRoot(root) {
             root.querySelectorAll('.text').forEach((el) => {
-                const clean = sanitizeHtmlToFragment(el.innerHTML);
+                const clean = sanitizeHtmlToFragment(el.innerHTML, { preserveHighlights: true });
                 el.replaceChildren(clean);
             });
         }
