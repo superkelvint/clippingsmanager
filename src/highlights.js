@@ -369,33 +369,10 @@ export function createHighlights({
             template.innerHTML = html || '';
 
             const out = document.createDocumentFragment();
-            const allowedTags = new Set([
-                'A', 'B', 'BLOCKQUOTE', 'BR', 'CAPTION', 'CODE', 'DD', 'DEL', 'DIV', 'DL', 'DT',
-                'EM', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HR', 'I', 'INS', 'KBD', 'LI', 'OL',
-                'P', 'PRE', 'S', 'SAMP', 'SMALL', 'SPAN', 'STRIKE', 'STRONG', 'SUB', 'SUP', 'TABLE',
-                'TBODY', 'TD', 'TFOOT', 'TH', 'THEAD', 'TR', 'U', 'UL', 'VAR'
-            ]);
+            const allowedTags = new Set(['B', 'BR', 'EM', 'I', 'STRONG', 'U']);
+            const headingTags = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+            const blockTags = new Set(['DIV', 'LI', 'OL', 'P', 'UL', 'BLOCKQUOTE', 'PRE', ...headingTags]);
             const blockedTags = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH', 'TEMPLATE']);
-            const allowedStyleProperties = [
-                'color', 'font-family', 'font-size', 'font-style', 'font-weight', 'letter-spacing',
-                'line-height', 'text-align', 'text-decoration', 'text-indent', 'text-transform',
-                'vertical-align', 'white-space', 'word-spacing'
-            ];
-
-            function copySafeStyle(source, target) {
-                for (const property of allowedStyleProperties) {
-                    const value = source.style.getPropertyValue(property).trim();
-                    if (!value || /url\s*\(|expression\s*\(|javascript\s*:/i.test(value)) continue;
-                    target.style.setProperty(property, value);
-                }
-            }
-
-            function safeLink(value) {
-                const href = (value || '').trim();
-                if (!href || /^(?:javascript|data|vbscript):/i.test(href)) return '';
-                if (/^(?:https?:|mailto:|tel:|#|\/|\.\/|\.\.\/)/i.test(href)) return href;
-                return '';
-            }
 
             function walk(node, parent) {
                 if (node.nodeType === Node.TEXT_NODE) {
@@ -423,29 +400,21 @@ export function createHighlights({
                     return;
                 }
 
+                if (headingTags.has(tag)) {
+                    const strong = document.createElement('strong');
+                    node.childNodes.forEach((child) => walk(child, strong));
+                    if (strong.childNodes.length > 0) parent.appendChild(strong);
+                    parent.appendChild(document.createElement('br'));
+                    return;
+                }
+
                 if (!allowedTags.has(tag)) {
                     node.childNodes.forEach((child) => walk(child, parent));
+                    if (blockTags.has(tag)) parent.appendChild(document.createElement('br'));
                     return;
                 }
 
                 const clean = document.createElement(tag.toLowerCase());
-                copySafeStyle(node, clean);
-                if (tag === 'A') {
-                    const href = safeLink(node.getAttribute('href'));
-                    if (href) {
-                        clean.setAttribute('href', href);
-                        clean.setAttribute('rel', 'noopener noreferrer');
-                    }
-                    const title = node.getAttribute('title');
-                    if (title) clean.setAttribute('title', title);
-                }
-                if (tag === 'TD' || tag === 'TH') {
-                    for (const attr of ['colspan', 'rowspan']) {
-                        const value = node.getAttribute(attr);
-                        if (/^\d{1,2}$/.test(value || '')) clean.setAttribute(attr, value);
-                    }
-                }
-
                 node.childNodes.forEach((child) => walk(child, clean));
                 parent.appendChild(clean);
             }

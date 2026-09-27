@@ -110,7 +110,7 @@ test('top section add-entry control inserts entries at the start', async ({ page
   }
 });
 
-test('pasting rich HTML keeps formatting and removes background colors', async ({ page }, testInfo) => {
+test('pasting keeps bold, italic, and underline, while converting headings to bold', async ({ page }, testInfo) => {
   const sourceHtmlPath = testInfo.config.metadata.clippingsHtmlPath;
   const temp = makeTempClippingsCopy(sourceHtmlPath);
   try {
@@ -132,16 +132,17 @@ test('pasting rich HTML keeps formatting and removes background colors', async (
       selection.addRange(range);
 
       const data = new DataTransfer();
-      data.setData('text/html', '<p><strong>Bold</strong> and <span style="color: rgb(255, 0, 0); background-color: rgb(255, 255, 0); text-decoration: underline">colored</span></p>');
-      data.setData('text/plain', 'Bold and colored');
+      data.setData('text/html', '<h2>Heading</h2><p><strong>Bold</strong>, <em>italic</em>, <u>underlined</u>, <span style="color: rgb(255, 0, 0); background-color: rgb(255, 255, 0)">plain</span></p>');
+      data.setData('text/plain', 'Heading\nBold, italic, underlined, plain');
       el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
     });
 
-    await expect(text.locator('strong')).toHaveText('Bold');
-    const colored = text.locator('span').filter({ hasText: 'colored' });
-    await expect(colored).toHaveCSS('color', 'rgb(255, 0, 0)');
-    await expect(colored).toHaveCSS('text-decoration-line', 'underline');
-    await expect(colored).not.toHaveCSS('background-color', 'rgb(255, 255, 0)');
+    await expect(text.locator('h2')).toHaveCount(0);
+    await expect(text.locator('strong')).toHaveText(['Heading', 'Bold']);
+    await expect(text.locator('em')).toHaveText('italic');
+    await expect(text.locator('u')).toHaveText('underlined');
+    await expect(text.locator('span')).toHaveCount(0);
+    await expect(text).not.toContainText('rgb(255, 0, 0)');
   } finally {
     temp.cleanup();
   }
